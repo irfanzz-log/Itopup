@@ -323,14 +323,11 @@ export function enabledPaymentMethods() {
  * would fill the whole form, and the order would be refused at the last step.
  * This is the list the UI and the order service must both agree on.
  *
- * Imported lazily to keep the adapter layer out of modules that only need the
- * static catalogue (and to avoid a static import cycle if an adapter ever needs
- * this file).
+ * LIVES IN payment.server.js, NOT HERE. This file is imported by client
+ * components (TopupForm) — importing the adapter here would pull the manual
+ * adapter → env.server.js → env.js into the client bundle. Get it from
+ * `@/config/payment.server`.
  */
-export async function availablePaymentMethods() {
-  const { checkMethodServable } = await import("../providers/payment/index.js");
-  return enabledPaymentMethods().filter((method) => checkMethodServable(method.key).ok);
-}
 
 /**
  * Narrow the servable list to what makes sense for ONE purchase.

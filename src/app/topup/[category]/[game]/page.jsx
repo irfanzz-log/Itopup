@@ -15,7 +15,7 @@ import { GameArtwork } from "@/components/catalog/CatalogCards";
 import { productIcon } from "@/config/icons.js";
 import { EmptyState } from "@/components/ui/primitives";
 import { getGameDetail, resolveCategoryKind } from "@/services/catalog.service";
-import { availablePaymentMethods } from "@/config/payment";
+import { availablePaymentMethods } from "@/config/payment.server";
 import { CATEGORY_KIND_LABEL, CATEGORY_KIND_PATH } from "@/lib/constants";
 
 export const dynamic = "force-dynamic";

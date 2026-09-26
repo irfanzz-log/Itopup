@@ -11,8 +11,10 @@
 //                  rather than faking success.
 //
 // NOTHING in this module may be imported from a client component: it reads
-// server-only secrets. The filename (.server.js) is the guard.
+// server-only secrets. The `server-only` import below makes that a BUILD ERROR
+// rather than a warning — a filename convention alone does not stop a bundler.
 // ============================================================================
+import "server-only";
 import { loadEnv } from "./env.js";
 
 loadEnv();

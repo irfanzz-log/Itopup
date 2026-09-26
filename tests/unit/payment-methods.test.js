@@ -53,14 +53,19 @@ afterEach(() => {
   vi.resetModules();
 });
 
-/** Import the catalogue + registry fresh, so env reads happen NOW. */
+/** Import the catalogue + registry fresh, so env reads happen NOW.
+ *
+ * `availablePaymentMethods` lives in payment.server.js — it touches the
+ * adapters, which read secrets, so it cannot live in the client-imported
+ * catalogue. */
 async function loadPaymentModules() {
-  const [config, registry, client] = await Promise.all([
+  const [config, server, registry, client] = await Promise.all([
     import("../../src/config/payment.js"),
+    import("../../src/config/payment.server.js"),
     import("../../src/providers/payment/index.js"),
     import("../../src/providers/payment/manual/client.js"),
   ]);
-  return { config, registry, client };
+  return { config: { ...config, ...server }, registry, client };
 }
 
 describe("catalogue integrity", () => {
