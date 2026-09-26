@@ -126,6 +126,74 @@ export default function PaymentInstructions({ orderId, payment, onIssued }) {
 
   const isEwallet = instructions.channel === "ewallet";
   const verified = instructions.verifiedAccount;
+  const isSnap = instructions.kind === "snap_redirect";
+  const snapUrl = instructions.redirectUrl || null;
+
+  // ── Gateway payment (Midtrans Snap): hand the customer to Snap ─────────
+  // The gateway owns the whole payment screen — the VA number, the QR, the
+  // card form. There is nothing to display here but the amount and a way in,
+  // so this renders instead of the manual-transfer detail block below.
+  if (isSnap) {
+    return (
+      <div className="mt-4 space-y-4">
+        <div className="rounded-[var(--radius-control)] border border-brand-200 bg-brand-soft p-4">
+          <div className="flex items-center gap-2">
+            {paymentIcon(payment?.method) ? (
+              <img
+                src={paymentIcon(payment?.method)}
+                alt=""
+                className="h-9 w-16 rounded bg-white/70 object-contain dark:bg-white/10"
+                loading="lazy"
+                decoding="async"
+              />
+            ) : null}
+            <p className="text-xs font-semibold uppercase tracking-wide text-brand-700 dark:text-brand-300">
+              {payment?.method ? paymentMethodLabel(payment.method) : "Pembayaran"}
+            </p>
+          </div>
+          <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-brand-700 dark:text-brand-300">
+            Nominal yang harus dibayar
+          </p>
+          <p className="mt-1 text-2xl font-extrabold tracking-tight text-foreground">
+            {formatIDR(instructions.payableAmount)}
+          </p>
+          <p className="mt-1.5 text-xs text-foreground-muted">
+            Bayar melalui Midtrans. Verifikasi terjadi otomatis.
+          </p>
+        </div>
+
+        <Alert tone="info" title="Selesaikan pembayaran di halaman Midtrans">
+          <p className="mb-3">
+            Klik tombol di bawah untuk membuka halaman pembayaran. Pilih metode
+            (virtual account, QRIS, kartu, atau e-wallet) di sana — pembayaran
+            kamu diverifikasi otomatis dan pesanan diproses begitu dana masuk.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <a
+              href={snapUrl || "#"}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn-primary btn-sm"
+            >
+              Bayar Sekarang
+            </a>
+            <button
+              type="button"
+              onClick={issue}
+              disabled={busy}
+              className="btn-secondary btn-sm"
+            >
+              {busy ? <Spinner /> : null}
+              {busy ? "Memuat…" : "Muat ulang instruksi"}
+            </button>
+          </div>
+          {error ? (
+            <p className="mt-2 text-xs font-medium text-danger-fg">{error}</p>
+          ) : null}
+        </Alert>
+      </div>
+    );
+  }
 
   return (
     <div className="mt-4 space-y-4">

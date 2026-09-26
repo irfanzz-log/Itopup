@@ -17,13 +17,16 @@
 import { AppError } from "@/lib/errors";
 import { assertPaymentProvider } from "./contract.js";
 import { manualTransferProvider } from "./manual/index.js";
+import { midtransProvider } from "./midtrans/index.js";
 
 /** @type {Record<string, object>} */
 const REGISTRY = {
   // Manual bank transfer — the method that works before a gateway is chosen.
   // Its credentials are bank accounts, not an API key.
   manual: manualTransferProvider,
-  // e.g. "midtrans": midtransProvider,
+  // Midtrans Snap — gateway. Its credentials are MIDTRANS_SERVER_KEY etc.
+  // Payment instructions are a Snap redirect URL, not an account number.
+  midtrans: midtransProvider,
 };
 
 /** True when a payment gateway is selected AND registered. */
@@ -90,11 +93,24 @@ export { REGISTRY as PAYMENT_PROVIDER_REGISTRY };
 // in the UI but unservable at checkout.
 const METHOD_PROVIDER_EXACT = {
   manual_transfer: "manual",
+  // Gateway methods map to Midtrans. These are the exact keys enabled in
+  // src/config/payment.js; a key absent from both maps is unservable, which is
+  // how a typo'd method key fails loudly instead of charging nobody.
+  qris: "midtrans",
+  card_credit: "midtrans",
+  card_debit: "midtrans",
+  ewallet_gopay: "midtrans",
+  ewallet_shopeepay: "midtrans",
+  // Retail outlets are Midtrans cstore channels.
+  retail_alfamart: "midtrans",
+  retail_indomaret: "midtrans",
 };
 
 const METHOD_PROVIDER_PREFIX = [
   ["manual_bank_", "manual"],
   ["manual_ewallet_", "manual"],
+  // Virtual accounts: `va_bca`, `va_bni`, … — all Midtrans VA channels.
+  ["va_", "midtrans"],
 ];
 
 /** The adapter code serving a method key, or null when nothing serves it. */

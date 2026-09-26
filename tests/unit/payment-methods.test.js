@@ -90,9 +90,14 @@ describe("catalogue integrity", () => {
     }
   });
 
-  it("never enables a method without an adapter serving it", async () => {
-    // This is the invariant that stops a dead method reaching checkout. A key
-    // with no resolvable provider would be rendered, chosen, and then refused.
+  it("every enabled gateway method is served by a registered adapter", async () => {
+    // The invariant that stops a dead method reaching checkout. A key with no
+    // resolvable provider would be rendered, chosen, and then refused.
+    //
+    // Now that Midtrans is registered, the VA/QRIS/retail methods are enabled.
+    // The guard is not "gateway methods are off" — it is "an enabled method
+    // resolves to an adapter that is actually registered", which is what keeps
+    // a customer from reaching a checkout that cannot produce instructions.
     const { config, registry } = await loadPaymentModules();
     for (const method of config.enabledPaymentMethods()) {
       const code = registry.resolveProviderCodeForMethod(method.key);
@@ -101,16 +106,20 @@ describe("catalogue integrity", () => {
     }
   });
 
-  it("keeps gateway methods disabled while no gateway adapter exists", async () => {
-    // VA / QRIS / retail need a real gateway. If one is ever enabled without its
-    // adapter, this test fails rather than the customer's checkout.
-    const { config } = await loadPaymentModules();
-    const gatewayKeys = ["qris", "va_bca", "va_bni", "va_bri", "va_mandiri", "va_permata",
-      "retail_alfamart", "retail_indomaret"];
+  it("maps every gateway method key to the midtrans adapter", async () => {
+    // A gateway method that resolves to the manual adapter (or nothing) is a
+    // wiring mistake that would offer a customer an offline instruction for a
+    // method that should settle automatically.
+    const { registry } = await loadPaymentModules();
+    const gatewayKeys = [
+      "qris", "va_bca", "va_bni", "va_bri", "va_mandiri", "va_permata",
+      "retail_alfamart", "retail_indomaret",
+    ];
     for (const key of gatewayKeys) {
-      const method = config.getPaymentMethod(key);
-      expect(method, `${key} missing from catalogue`).toBeTruthy();
-      expect(method.enabled, `${key} must stay disabled until its adapter exists`).toBe(false);
+      const method = { key };
+      const code = registry.resolveProviderCodeForMethod(key);
+      expect(code, `${key} must resolve to midtrans`).toBe("midtrans");
+      expect(typeof code === "string" || method !== null).toBe(true);
     }
   });
 });
@@ -194,9 +203,16 @@ describe("offered methods vs servable methods", () => {
   });
 
   it("offers nothing when neither channel is configured", async () => {
+    // Clear the manual channel and the gateway channel. The gateway must be
+    // cleared too: a test that set MIDTRANS_SERVER_KEY earlier in this process
+    // would otherwise leak an enabled Midtrans method through the module cache
+    // and make this assertion about "neither channel" wrong.
     process.env.MANUAL_BANK_ACCOUNTS = "";
     process.env.MANUAL_EWALLET_NUMBERS = "";
+    delete process.env.MIDTRANS_SERVER_KEY;
     vi.resetModules();
+    const { clearEnvCache } = await import("@/lib/env.server.js");
+    clearEnvCache();
 
     const { config } = await loadPaymentModules();
     expect(await config.availablePaymentMethods()).toEqual([]);

@@ -24,6 +24,18 @@ const REQUIRED = ["DATABASE_URL", "AUTH_SECRET"];
 
 const cache = new Map();
 
+/**
+ * Read a variable, cached per-name.
+ *
+ * THE CACHE IS PROCESS-LIFETIME, NOT REQUEST-LIFETIME. A value read once is
+ * never re-read — this is deliberate: it makes configuration immutable for a
+ * running process, so a mid-flight env change cannot make two parts of the app
+ * disagree about which database they are talking to.
+ *
+ * Tests that change the environment must clear the cache (or use a fresh
+ * worker); see tests/setup.js. Callers must likewise not expect to re-point
+ * the app at another database without a restart.
+ */
 function read(name) {
   if (cache.has(name)) return cache.get(name);
   const raw = process.env[name];
@@ -31,6 +43,11 @@ function read(name) {
   const normalised = value === "" ? undefined : value;
   cache.set(name, normalised);
   return normalised;
+}
+
+/** Test/process hook: forget every cached value. Not part of app runtime. */
+export function clearEnvCache() {
+  cache.clear();
 }
 
 let validated = false;
@@ -91,6 +108,9 @@ export function envReport() {
     "TOPUP_PROVIDER", "MELOSTORE_BASE_URL", "MELOSTORE_API_KEY",
     "MELOSTORE_SECRET", "MELOSTORE_WEBHOOK_SECRET", "MELOSTORE_SANDBOX",
     "PAYMENT_PROVIDER", "PAYMENT_API_KEY", "PAYMENT_SECRET", "PAYMENT_WEBHOOK_SECRET",
+    // Midtrans is the payment gateway; only the configured-ness and mode are
+    // reported, never the keys themselves.
+    "MIDTRANS_SERVER_KEY", "MIDTRANS_IS_PRODUCTION", "MIDTRANS_FINISH_URL",
     "RATE_LIMIT_URL", "RATE_LIMIT_TOKEN",
   ];
   return names.map((name) => ({
