@@ -1,0 +1,530 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id             String     @id @default(uuid())
+  name           String
+  email          String     @unique
+  phone          String?
+  passwordHash   String
+  role           Role       @default(MEMBER)
+  status         UserStatus @default(ACTIVE)
+  blockedReason  String?
+  blockedAt      DateTime?
+  sessionVersion Int        @default(0)
+  lastLoginAt    DateTime?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+  auditLogs      AuditLog[] @relation("AuditActor")
+  orders         Order[]
+  createdPromos  Promo[]
+  sessions       Session[]
+
+  @@index([email])
+  @@index([role, status])
+  @@index([createdAt])
+  @@map("users")
+}
+
+model Session {
+  id          String   @id @default(uuid())
+  tokenHash   String   @unique
+  userId      String
+  userVersion Int      @default(0)
+  ip          String?
+  userAgent   String?
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+model Category {
+  id          String       @id @default(uuid())
+  kind        CategoryKind @unique
+  name        String
+  slug        String       @unique
+  description String?
+  icon        String?
+  sortOrder   Int          @default(0)
+  isActive    Boolean      @default(true)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  games       Game[]
+
+  @@index([isActive, sortOrder])
+  @@map("categories")
+}
+
+/// A purchasable "brand" inside a category: Mobile Legends, DANA, Telkomsel.
+/// `inputFields` is the config-driven contract for what the checkout must
+/// collect (userId+zoneId, phone number, ...). It is a JSON array of
+/// { key, label, placeholder, pattern, minLength, maxLength, required,
+/// validateWithProvider } — see src/config/input-fields.js for the shape.
+/// Keeping it on the row (not in code) is what lets a new game be added from
+/// the admin panel without a deploy.
+model Game {
+  id                 String    @id @default(uuid())
+  categoryId         String
+  name               String
+  slug               String    @unique
+  publisher          String?
+  description        String?
+  logo               String?
+  banner             String?
+  /// JSON array — see doc comment above.
+  inputFields        Json      @default("[]")
+  /// Whether the provider adapter exposes account validation for this game.
+  supportsValidation Boolean   @default(false)
+  isPopular          Boolean   @default(false)
+  isActive           Boolean   @default(true)
+  sortOrder          Int       @default(0)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  category           Category  @relation(fields: [categoryId], references: [id])
+  products           Product[]
+
+  @@index([categoryId, isActive, sortOrder])
+  @@index([slug])
+  @@index([isActive, isPopular])
+  @@map("games")
+}
+
+/// A *type* of top-up product within a game, e.g. "Diamonds", "Weekly Pass",
+/// "Pulsa Reguler", "DANA". Nominal cards are its ProductVariants.
+model Product {
+  id          String           @id @default(uuid())
+  gameId      String
+  name        String
+  slug        String
+  description String?
+  icon        String?
+  /// How variants are ordered/displayed: NOMINAL (by value) or MANUAL.
+  sortMode    SortMode         @default(NOMINAL)
+  isActive    Boolean          @default(true)
+  sortOrder   Int              @default(0)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  variants    ProductVariant[]
+  game        Game             @relation(fields: [gameId], references: [id])
+
+  @@unique([gameId, slug])
+  @@index([gameId, isActive, sortOrder])
+  @@map("products")
+}
+
+/// The actual card the user clicks: "86 Diamonds", "Rp 10.000".
+/// Prices live here and are the ONLY source of truth for what a customer pays.
+model ProductVariant {
+  id               String            @id @default(uuid())
+  productId        String
+  name             String
+  slug             String
+  /// Numeric denomination (diamonds, rupiah) for sorting/labelling. Null for
+  /// non-numeric items such as a weekly pass.
+  denomination     Int?
+  unit             String?
+  /// Harga modal — what the provider charges us. Admin-only, never serialised
+  /// to a public response.
+  costPrice        Int
+  /// Base selling price before promo. What the customer pays by default.
+  sellingPrice     Int
+  /// Optional admin override; null means "derive from costPrice + markup".
+  isActive         Boolean           @default(true)
+  /// Provider-reported stock; null means unlimited / untracked.
+  stock            Int?
+  sortOrder        Int               @default(0)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  orderItems       OrderItem[]
+  product          Product           @relation(fields: [productId], references: [id])
+  providerProducts ProviderProduct[]
+  promos           Promo[]           @relation("ProductVariantToPromo")
+
+  @@unique([productId, slug])
+  @@index([productId, isActive, sortOrder])
+  @@index([isActive])
+  @@map("product_variants")
+}
+
+model Provider {
+  id               String            @id @default(uuid())
+  /// Adapter key resolved by src/providers/index.js — e.g. "melostore".
+  code             String            @unique
+  kind             ProviderKind      @default(TOPUP)
+  name             String
+  status           ProviderStatus    @default(ACTIVE)
+  /// Non-secret base URL, kept here so ops can point at a sandbox without a
+  /// redeploy. Credentials themselves live ONLY in environment variables.
+  baseUrl          String?
+  priority         Int               @default(0)
+  lastSyncAt       DateTime?
+  lastSyncStatus   String?
+  /// Cached provider balance in rupiah. Written by the balance sync service.
+  balance          Int?
+  balanceUpdatedAt DateTime?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  /// Reference data from the last successful catalogue sync: the provider's
+  /// brand list and inquiry-form definitions. Stored so /dev/providers can show
+  /// whether the fields we render still match what the provider expects.
+  catalogMeta      Json?
+  orders           Order[]
+  providerProducts ProviderProduct[]
+
+  @@index([kind, status, priority])
+  @@map("providers")
+}
+
+/// Maps one internal ProductVariant to one provider SKU.
+/// This table is the ONLY place a provider product code appears.
+model ProviderProduct {
+  id               String         @id @default(uuid())
+  providerId       String
+  productVariantId String
+  /// The provider's own product/SKU code. Provider-specific by definition.
+  providerCode     String
+  /// Provider's own display name for the SKU (for admin comparison).
+  providerName     String?
+  /// Last price quoted by the provider. Drives costPrice during sync.
+  providerPrice    Int?
+  providerStock    Int?
+  isAvailable      Boolean        @default(true)
+  /// Raw last payload from the provider, for debugging sync drift.
+  lastSyncPayload  Json?
+  lastSyncAt       DateTime?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  productVariant   ProductVariant @relation(fields: [productVariantId], references: [id], onDelete: Cascade)
+  provider         Provider       @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@unique([providerId, providerCode])
+  @@unique([providerId, productVariantId])
+  @@index([productVariantId])
+  @@index([isAvailable])
+  @@map("provider_products")
+}
+
+model Order {
+  id               String           @id @default(uuid())
+  /// Customer-facing invoice, e.g. ITP-20260925-7F3K2Q9A.
+  invoice          String           @unique
+  userId           String
+  status           OrderStatus      @default(PENDING_PAYMENT)
+  gameName         String
+  productName      String
+  variantName      String
+  quantity         Int              @default(1)
+  /// What the customer typed (player id, zone id, phone, ...). A JSON object
+  /// keyed by the Game.inputFields contract. Provider params are derived from
+  /// this by the adapter's mapper — never by the order service.
+  customerInput    Json
+  unitCostPrice    Int
+  unitSellingPrice Int
+  subtotal         Int
+  discount         Int              @default(0)
+  fee              Int              @default(0)
+  total            Int
+  /// total - (unitCostPrice * quantity) — reporting only, never trusted for
+  /// anything financial.
+  margin           Int              @default(0)
+  providerId       String?
+  providerRef      String?
+  /// The provider's own order id, when it differs from providerRef.
+  providerOrderId  String?
+  providerStatus   String?
+  providerMessage  String?
+  /// Incremented every time we dispatch to the provider. Guards against a
+  /// retry storm and makes reconciliation auditable.
+  providerAttempts Int              @default(0)
+  dispatchedAt     DateTime?
+  completedAt      DateTime?
+  /// Client-supplied key from the checkout form. Unique per user: a double
+  /// click, a refresh, or a retried request resolves to the same order.
+  idempotencyKey   String
+  /// Hash of the checkout payload. If the same key arrives with a different
+  /// payload we reject it (409) instead of silently returning the old order.
+  requestHash      String
+  expiresAt        DateTime?
+  ip               String?
+  userAgent        String?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  items            OrderItem[]
+  provider         Provider?        @relation(fields: [providerId], references: [id])
+  user             User             @relation(fields: [userId], references: [id])
+  payment          Payment?
+  logs             TransactionLog[]
+
+  @@unique([userId, idempotencyKey])
+  @@unique([providerId, providerRef])
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+  @@index([status, expiresAt])
+  @@index([invoice])
+  @@index([createdAt])
+  @@map("orders")
+}
+
+/// One line per order today, but modelled as a list so a future "buy 2 items in
+/// one checkout" does not require a schema migration.
+model OrderItem {
+  id               String         @id @default(uuid())
+  orderId          String
+  productVariantId String
+  gameName         String
+  productName      String
+  variantName      String
+  quantity         Int            @default(1)
+  unitCostPrice    Int
+  unitSellingPrice Int
+  subtotal         Int
+  createdAt        DateTime       @default(now())
+  order            Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productVariant   ProductVariant @relation(fields: [productVariantId], references: [id])
+
+  @@index([orderId])
+  @@index([productVariantId])
+  @@map("order_items")
+}
+
+model Payment {
+  id           String        @id @default(uuid())
+  /// One payment per order — the unique constraint is what makes a webhook
+  /// replay harmless.
+  orderId      String        @unique
+  providerCode String
+  status       PaymentStatus @default(PENDING)
+  method       String?
+  /// Gateway-side reference (VA number, QR id, invoice id).
+  reference    String?
+  externalId   String?
+  amount       Int
+  fee          Int           @default(0)
+  paidAmount   Int?
+  /// Payment instructions / VA number handed to the customer.
+  instructions Json?
+  expiresAt    DateTime?
+  paidAt       DateTime?
+  rawPayload   Json?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  order        Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@unique([providerCode, reference])
+  @@index([status, expiresAt])
+  @@index([createdAt])
+  @@map("payments")
+}
+
+/// Append-only event trail. Nothing in the app ever updates or deletes a row
+/// here; it is the forensic record of what actually happened to an order.
+model TransactionLog {
+  id         String   @id @default(uuid())
+  orderId    String?
+  /// Correlates every log line of one request / provider call.
+  requestId  String?
+  /// Machine-readable event name: ORDER_CREATED, PAYMENT_WEBHOOK_RECEIVED, ...
+  event      String
+  /// Optional internal error code (ITP_PROVIDER_TIMEOUT, ...).
+  code       String?
+  message    String?
+  /// Structured context. NEVER store secrets, tokens or full payment data here.
+  metadata   Json?
+  durationMs Int?
+  createdAt  DateTime @default(now())
+  order      Order?   @relation(fields: [orderId], references: [id])
+
+  @@index([orderId, createdAt])
+  @@index([event, createdAt])
+  @@index([requestId])
+  @@map("transaction_logs")
+}
+
+model Promo {
+  id            String           @id @default(uuid())
+  title         String
+  slug          String           @unique
+  description   String?
+  /// Sanitised HTML is NOT accepted here in Phase 1 — the field is plain text
+  /// and rendered escaped. If rich content is needed later, sanitise on write
+  /// AND render through a sanitising component.
+  image         String?
+  banner        String?
+  discountType  DiscountType
+  discountValue Int
+  /// Cap for PERCENT discounts, in rupiah.
+  maxDiscount   Int?
+  minSpend      Int              @default(0)
+  startsAt      DateTime
+  endsAt        DateTime
+  isActive      Boolean          @default(true)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  createdById   String?
+  codes         PromoCode[]
+  createdBy     User?            @relation(fields: [createdById], references: [id])
+  variants      ProductVariant[] @relation("ProductVariantToPromo")
+
+  @@index([isActive, startsAt, endsAt])
+  @@index([slug])
+  @@map("promos")
+}
+
+model PromoCode {
+  id           String   @id @default(uuid())
+  promoId      String
+  /// Stored upper-cased; lookups upper-case the input before querying.
+  code         String   @unique
+  /// null = unlimited. Enforced atomically at checkout, not by a read-then-write.
+  usageLimit   Int?
+  usageCount   Int      @default(0)
+  perUserLimit Int?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  promo        Promo    @relation(fields: [promoId], references: [id], onDelete: Cascade)
+
+  @@index([promoId, isActive])
+  @@map("promo_codes")
+}
+
+/// Admin action trail. Written by the audit service, never by user code paths.
+model AuditLog {
+  id         String   @id @default(uuid())
+  actorId    String?
+  actorRole  Role?
+  /// ACTION_NAME in SCREAMING_SNAKE, e.g. MEMBER_BLOCKED.
+  action     String
+  /// Model name + id of the affected row, e.g. ("User", "<uuid>").
+  targetType String?
+  targetId   String?
+  /// Before/after diff, limited to non-sensitive fields. Never a password hash,
+  /// never a token, never an API key.
+  metadata   Json?
+  ip         String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+  actor      User?    @relation("AuditActor", fields: [actorId], references: [id])
+
+  @@index([actorId, createdAt])
+  @@index([action, createdAt])
+  @@index([targetType, targetId])
+  @@map("audit_logs")
+}
+
+/// Denormalised block record so "why was this member blocked, by whom, when"
+/// survives even if the user row is later modified.
+model UserBlock {
+  id            String    @id @default(uuid())
+  userId        String
+  reason        String
+  blockedById   String?
+  blockedAt     DateTime  @default(now())
+  unblockedAt   DateTime?
+  unblockedById String?
+
+  @@index([userId, unblockedAt])
+  @@map("user_blocks")
+}
+
+/// Webhook replay protection. Every provider/payment callback inserts its
+/// unique external event id here first; a duplicate insert (P2002) means the
+/// callback is a replay and must be acknowledged without re-processing.
+model WebhookEvent {
+  id           String   @id @default(uuid())
+  providerCode String
+  /// Provider's own event/message id, or a hash of the signed body when the
+  /// provider does not send one.
+  externalId   String
+  eventType    String?
+  orderId      String?
+  payloadHash  String
+  processedAt  DateTime @default(now())
+
+  @@unique([providerCode, externalId])
+  @@index([orderId])
+  @@map("webhook_events")
+}
+
+/// Generic key-value store for provider sync cursors and other ops state that
+/// does not deserve its own table.
+model AppSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+
+  @@map("app_settings")
+}
+
+enum Role {
+  MEMBER
+  DEV
+  SUPERADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  BLOCKED
+}
+
+enum CategoryKind {
+  GAME
+  E_WALLET
+  PULSA
+}
+
+enum SortMode {
+  NOMINAL
+  MANUAL
+}
+
+enum ProviderKind {
+  TOPUP
+  PAYMENT
+}
+
+enum ProviderStatus {
+  ACTIVE
+  DEGRADED
+  DISABLED
+}
+
+/// Explicit state machine — never a boolean. Transitions are enforced in
+/// src/services/order.service.js; anything not listed there is rejected.
+enum OrderStatus {
+  PENDING_PAYMENT
+  PAYMENT_PROCESSING
+  PAID
+  PROCESSING
+  SUCCESS
+  FAILED
+  REFUND
+  EXPIRED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  PAID
+  FAILED
+  EXPIRED
+  REFUNDED
+  CANCELLED
+}
+
+enum DiscountType {
+  FIXED
+  PERCENT
+}

@@ -1,0 +1,46 @@
+{
+  "name": "itopup",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ITOPUP — platform top-up game, e-wallet, dan pulsa",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
+    "db:seed": "node prisma/seed.js",
+    "db:studio": "prisma studio",
+    "test:db:reset": "node scripts/reset-test-db.js"
+  },
+  "prisma": {
+    "seed": "node prisma/seed.js"
+  },
+  "dependencies": {
+    "@prisma/adapter-pg": "7.10.0",
+    "@prisma/client": "7.10.0",
+    "bcryptjs": "3.0.3",
+    "jose": "6.2.12",
+    "next": "16.3.6",
+    "pg": "8.23.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@tailwindcss/postcss": "4.3.3",
+    "dotenv": "16.4.7",
+    "eslint": "^9",
+    "eslint-config-next": "16.3.6",
+    "playwright": "1.63.0",
+    "prisma": "7.10.0",
+    "tailwindcss": "4.3.3",
+    "vitest": "5.0.1"
+  }
+}
