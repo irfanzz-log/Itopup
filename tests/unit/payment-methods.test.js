@@ -2,12 +2,16 @@
 // Payment method catalogue — invariants that must hold before a customer sees
 // a checkout.
 //
+// EVERY METHOD IS SERVED BY MIDTRANS SNAP. The manual/offline methods are gone:
+// the customer no longer transfers to our bank account, no operator reconciles
+// anything, and the only thing that settles an order is the signature-verified
+// Midtrans webhook.
+//
 // The bug these lock down: a method could be `enabled: true` in the catalogue,
-// appear in the checkout, and then fail at the last step because its adapter was
-// not configured. Worse, the adapter's configuration is PER CHANNEL — bank
-// accounts and e-wallet numbers are separate lists — so a bank method could be
-// offered while only an e-wallet number existed, sending the customer to
-// instructions they could not follow.
+// appear in the checkout, and then fail at the last step because the gateway
+// was not configured — the customer fills the whole form and is then refused.
+// `availablePaymentMethods()` must filter on the ADAPTER being configured, not
+// just on `enabled`.
 //
 // WHY EVERY CASE RE-IMPORTS THE MODULES
 //
@@ -26,22 +30,18 @@
 // ============================================================================
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
-/** Both channels configured — the state a live deployment is in. */
-const BOTH_CHANNELS = {
-  MANUAL_BANK_ACCOUNTS: JSON.stringify([
-    { bank: "BCA", number: "1234567890", holder: "PT ITOPUP" },
-  ]),
-  MANUAL_EWALLET_NUMBERS: JSON.stringify([
-    { name: "DANA", number: "081234567890", holder: "PT ITOPUP" },
-  ]),
+/** The Midtrans gateway, configured — the state a live deployment is in. */
+const GATEWAY = {
+  MIDTRANS_SERVER_KEY: "SB-Mid-server-TEST",
+  MIDTRANS_MERCHANT_ID: "M001",
 };
 
-const ENV_KEYS = ["MANUAL_BANK_ACCOUNTS", "MANUAL_EWALLET_NUMBERS"];
+const ENV_KEYS = Object.keys(GATEWAY);
 const original = {};
 
 beforeEach(() => {
   for (const key of ENV_KEYS) original[key] = process.env[key];
-  Object.assign(process.env, BOTH_CHANNELS);
+  Object.assign(process.env, GATEWAY);
   vi.resetModules();
 });
 
@@ -59,13 +59,12 @@ afterEach(() => {
  * adapters, which read secrets, so it cannot live in the client-imported
  * catalogue. */
 async function loadPaymentModules() {
-  const [config, server, registry, client] = await Promise.all([
+  const [config, server, registry] = await Promise.all([
     import("../../src/config/payment.js"),
     import("../../src/config/payment.server.js"),
     import("../../src/providers/payment/index.js"),
-    import("../../src/providers/payment/manual/client.js"),
   ]);
-  return { config: { ...config, ...server }, registry, client };
+  return { config: { ...config, ...server }, registry };
 }
 
 describe("catalogue integrity", () => {
@@ -147,69 +146,57 @@ describe("payment method is an instrument, not a product", () => {
     const offered = config.filterMethodsForPurchase(all, { amount: 100_000 });
     const keys = offered.map((m) => m.key);
 
-    expect(keys).toContain("manual_ewallet_dana");
-    expect(keys).toContain("manual_ewallet_ovo");
-    expect(keys).toContain("manual_ewallet_gopay");
-    expect(keys).toContain("manual_ewallet_shopeepay");
+    expect(keys).toContain("ewallet_gopay");
+    expect(keys).toContain("ewallet_shopeepay");
+    expect(keys).toContain("qris");
   });
 
   it("still hides a method below its minimum", async () => {
     const { config } = await loadPaymentModules();
     const all = await config.availablePaymentMethods();
 
-    // The ONE legitimate restriction survives: a bank transfer under Rp 100.000.
+    // THE VA RULE: a virtual account under Rp 100.000 is not viable, so it is
+    // hidden. QRIS has no such floor and stays available.
     const offered = config.filterMethodsForPurchase(all, { amount: 5_000 });
-    expect(offered.map((m) => m.key)).not.toContain("manual_bank_bca");
-    // The e-wallet floor is lower, so it stays available.
-    expect(offered.map((m) => m.key)).toContain("manual_ewallet_dana");
+    expect(offered.map((m) => m.key)).not.toContain("va_bca");
+    expect(offered.map((m) => m.key)).toContain("qris");
   });
 });
 
 describe("offered methods vs servable methods", () => {
-  it("offers every configured offline method when both channels exist", async () => {
+  it("offers every gateway method when Midtrans is configured", async () => {
     const { config } = await loadPaymentModules();
     const keys = (await config.availablePaymentMethods()).map((m) => m.key);
 
-    // The brief: e-wallet AND multiple banks must be selectable.
-    expect(keys).toContain("manual_bank_bca");
-    expect(keys).toContain("manual_bank_mandiri");
-    expect(keys).toContain("manual_ewallet_dana");
-    expect(keys).toContain("manual_ewallet_ovo");
-    expect(keys).toContain("manual_ewallet_gopay");
-    expect(keys).toContain("manual_ewallet_shopeepay");
+    // The brief: the customer must be able to pay by QR, wallet, VA and bank.
+    expect(keys).toContain("qris");
+    expect(keys).toContain("ewallet_gopay");
+    expect(keys).toContain("ewallet_shopeepay");
+    expect(keys).toContain("va_bca");
+    expect(keys).toContain("va_mandiri");
+    expect(keys).toContain("retail_alfamart");
   });
 
-  it("hides bank methods when no bank account is configured", async () => {
-    process.env.MANUAL_BANK_ACCOUNTS = "";
+  it("hides EVERY method when the gateway is not configured", async () => {
+    // With Midtrans unset there is no fallback channel at all — no bank account
+    // and no wallet number exist on our side any more. The honest checkout is
+    // an empty list plus the reason, not a set of methods that 401 on pay.
+    process.env.MIDTRANS_SERVER_KEY = "";
+    process.env.MIDTRANS_MERCHANT_ID = "";
     vi.resetModules();
+    const { clearEnvCache } = await import("@/lib/env.server.js");
+    clearEnvCache();
 
     const { config } = await loadPaymentModules();
-    const keys = (await config.availablePaymentMethods()).map((m) => m.key);
-
-    expect(keys.some((k) => k.startsWith("manual_bank_"))).toBe(false);
-    // The e-wallet channel is independent and must survive.
-    expect(keys).toContain("manual_ewallet_dana");
+    expect(await config.availablePaymentMethods()).toEqual([]);
   });
 
-  it("hides e-wallet methods when no wallet number is configured", async () => {
-    process.env.MANUAL_EWALLET_NUMBERS = "";
-    vi.resetModules();
-
-    const { config } = await loadPaymentModules();
-    const keys = (await config.availablePaymentMethods()).map((m) => m.key);
-
-    expect(keys.some((k) => k.startsWith("manual_ewallet_"))).toBe(false);
-    expect(keys).toContain("manual_bank_bca");
-  });
-
-  it("offers nothing when neither channel is configured", async () => {
-    // Clear the manual channel and the gateway channel. The gateway must be
-    // cleared too: a test that set MIDTRANS_SERVER_KEY earlier in this process
-    // would otherwise leak an enabled Midtrans method through the module cache
-    // and make this assertion about "neither channel" wrong.
-    process.env.MANUAL_BANK_ACCOUNTS = "";
-    process.env.MANUAL_EWALLET_NUMBERS = "";
-    delete process.env.MIDTRANS_SERVER_KEY;
+  it("hides every method when the key is still the GANTI- placeholder", async () => {
+    // The .env files carry the literal marker "GANTI-SERVER-KEY" for unset keys.
+    // A non-empty placeholder must not pass as configured, or checkout offers a
+    // gateway that 401s on every real transaction.
+    process.env.MIDTRANS_SERVER_KEY = "GANTI-SERVER-KEY";
+    process.env.MIDTRANS_MERCHANT_ID = "GANTI-MERCHANT-ID";
     vi.resetModules();
     const { clearEnvCache } = await import("@/lib/env.server.js");
     clearEnvCache();
@@ -219,74 +206,74 @@ describe("offered methods vs servable methods", () => {
   });
 
   it("reports WHY a method is unavailable instead of silently dropping it", async () => {
-    process.env.MANUAL_EWALLET_NUMBERS = "";
+    process.env.MIDTRANS_SERVER_KEY = "";
     vi.resetModules();
+    const { clearEnvCache } = await import("@/lib/env.server.js");
+    clearEnvCache();
 
     const { registry } = await loadPaymentModules();
-    const result = registry.checkMethodServable("manual_ewallet_dana");
+    const result = registry.checkMethodServable("qris");
 
     expect(result.ok).toBe(false);
-    expect(result.reason).toMatch(/e-wallet/i);
+    expect(result.reason).toBeTruthy();
   });
 });
 
 describe("legacy compatibility", () => {
-  it("keeps manual_transfer resolvable for orders that already reference it", async () => {
-    // Deleting the key would make getPaymentMethod return null and strand every
-    // order created before the catalogue was split.
-    const { config, registry } = await loadPaymentModules();
+  it("keeps every manual_* key resolvable for orders that already reference it", async () => {
+    // Deleting a key would make getPaymentMethod return null and strand every
+    // order created before Midtrans: its receipts, its labels, its re-issue
+    // flow. The keys stay, but OFF.
+    const { config } = await loadPaymentModules();
 
     expect(config.getPaymentMethod("manual_transfer")).toBeTruthy();
-    expect(registry.resolveProviderCodeForMethod("manual_transfer")).toBe("manual");
+    expect(config.getPaymentMethod("manual_bank_bca")).toBeTruthy();
+    expect(config.getPaymentMethod("manual_ewallet_dana")).toBeTruthy();
   });
 
-  it("does not offer manual_transfer as a new checkout option", async () => {
+  it("does not offer any manual_* method as a new checkout option", async () => {
     const { config } = await loadPaymentModules();
-    expect(config.enabledPaymentMethods().map((m) => m.key)).not.toContain("manual_transfer");
+    const offered = config.enabledPaymentMethods().map((m) => m.key);
+
+    expect(offered).not.toContain("manual_transfer");
+    expect(offered).not.toContain("manual_bank_bca");
+    expect(offered).not.toContain("manual_ewallet_dana");
   });
 
-  it("can still serve instructions for a legacy order", async () => {
+  it("refuses to serve instructions on a retired method", async () => {
+    // A stale client page (or a hand-crafted request) carrying an old key must
+    // be refused by the server, not routed to Midtrans with a payment_type it
+    // does not own.
     const { registry } = await loadPaymentModules();
-    expect(registry.checkMethodServable("manual_transfer").ok).toBe(true);
+
+    expect(registry.resolveProviderCodeForMethod("manual_transfer")).toBeNull();
+    expect(registry.resolveProviderCodeForMethod("manual_bank_bca")).toBeNull();
+    expect(registry.resolveProviderCodeForMethod("manual_ewallet_dana")).toBeNull();
+    expect(registry.checkMethodServable("manual_transfer").ok).toBe(false);
   });
 });
 
-describe("channel routing", () => {
-  it("routes every offline method to the correct channel", async () => {
-    const { client } = await loadPaymentModules();
+describe("gateway routing", () => {
+  it("routes every enabled method to the midtrans adapter", async () => {
+    const { config, registry } = await loadPaymentModules();
 
-    expect(client.channelForMethod("manual_bank_bca")).toBe("bank");
-    expect(client.channelForMethod("manual_ewallet_dana")).toBe("ewallet");
-    // The legacy key defaults to bank, which is what it always meant.
-    expect(client.channelForMethod("manual_transfer")).toBe("bank");
+    for (const method of config.enabledPaymentMethods()) {
+      expect(
+        registry.resolveProviderCodeForMethod(method.key),
+        `${method.key} is not routed to any adapter`
+      ).toBe("midtrans");
+    }
   });
 
-  it("checks servability against the method's own channel", async () => {
-    process.env.MANUAL_BANK_ACCOUNTS = "";
-    process.env.MANUAL_EWALLET_NUMBERS = BOTH_CHANNELS.MANUAL_EWALLET_NUMBERS;
+  it("checks servability against the configured gateway", async () => {
+    process.env.MIDTRANS_SERVER_KEY = "SB-Mid-server-TEST";
     vi.resetModules();
+    const { clearEnvCache } = await import("@/lib/env.server.js");
+    clearEnvCache();
 
-    const { client } = await loadPaymentModules();
-
-    expect(client.isMethodConfigured("manual_ewallet_dana").ok).toBe(true);
-    expect(client.isMethodConfigured("manual_bank_bca").ok).toBe(false);
-  });
-
-  it("drops a destination that is missing a field", async () => {
-    // A half-configured account number must never reach a customer: showing a
-    // partial number is worse than showing none.
-    process.env.MANUAL_BANK_ACCOUNTS = JSON.stringify([
-      { bank: "BCA", number: "1234567890", holder: "PT ITOPUP" },
-      { bank: "Mandiri", number: "", holder: "PT ITOPUP" },
-      { bank: "BNI", holder: "PT ITOPUP" },
-    ]);
-    vi.resetModules();
-
-    const { client } = await loadPaymentModules();
-    const accounts = client.loadBankAccounts();
-
-    expect(accounts).toHaveLength(1);
-    expect(accounts[0].name).toBe("BCA");
+    const { registry } = await loadPaymentModules();
+    expect(registry.checkMethodServable("qris").ok).toBe(true);
+    expect(registry.checkMethodServable("va_bca").ok).toBe(true);
   });
 });
 
@@ -294,6 +281,9 @@ describe("presentation helpers", () => {
   it("labels a stored method key with its human name", async () => {
     const { config } = await loadPaymentModules();
 
+    expect(config.paymentMethodLabel("va_bca")).toBe("BCA Virtual Account");
+    expect(config.paymentMethodLabel("qris")).toContain("QRIS");
+    // Legacy orders still print something sensible instead of blanking out.
     expect(config.paymentMethodLabel("manual_bank_bca")).toBe("Transfer Bank BCA");
     expect(config.paymentMethodLabel("manual_ewallet_dana")).toBe("DANA");
   });
@@ -318,14 +308,17 @@ describe("presentation helpers", () => {
   it("charges no fee on offline methods but a real fee on gateway methods", async () => {
     const { config } = await loadPaymentModules();
 
-    expect(config.computePaymentFee(config.getPaymentMethod("manual_bank_bca"), 50_000)).toBe(0);
+    // A VA carries a flat Rp 4.000 admin fee.
+    expect(config.computePaymentFee(config.getPaymentMethod("va_bca"), 200_000)).toBe(4000);
     // QRIS at 0.7% of 100.000 = 700 — integer arithmetic, no float drift.
     expect(config.computePaymentFee(config.getPaymentMethod("qris"), 100_000)).toBe(700);
   });
 
   it("refuses an amount below the method minimum, with a reason", async () => {
     const { config } = await loadPaymentModules();
-    const result = config.checkMethodEligibility(config.getPaymentMethod("manual_bank_bca"), 500);
+    // The VA floor: under Rp 100.000 a virtual account is refused, and the
+    // reason names the minimum so the customer knows what to do.
+    const result = config.checkMethodEligibility(config.getPaymentMethod("va_bca"), 5_000);
 
     expect(result.ok).toBe(false);
     expect(result.reason).toMatch(/minimum/i);

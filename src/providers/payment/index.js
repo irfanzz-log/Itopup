@@ -1,31 +1,27 @@
 // ============================================================================
 // Payment provider registry.
 //
-// The registry is EMPTY on purpose: no gateway has been selected, and an
-// adapter cannot be written without that gateway's documentation. The core app
-// asks for a payment provider and gets a precise error instead of a stub that
-// pretends to charge someone.
+// ONE GATEWAY: MIDTRANS.
 //
-// Adding a gateway later:
-//   1. create src/providers/payment/<code>/{client,map,index}.js implementing
-//      the contract in ./contract.js,
-//   2. register it in REGISTRY below,
-//   3. set PAYMENT_PROVIDER=<code> plus its credentials in the environment,
-//   4. flip the relevant entries in src/config/payment.js to `enabled: true`.
-// No page, service, or route handler changes — that is the point.
+// The catalogue in src/config/payment.js used to be split between offline
+// methods (served by the manual adapter — a human reconciled each transfer) and
+// gateway methods. The offline methods and the manual adapter are gone: every
+// method a customer can pick is now created, charged and settled by Midtrans
+// Snap, and settled in our database ONLY by the signature-verified webhook at
+// POST /api/webhooks/payment/midtrans.
+//
+// The manual adapter is still ON DISK at ./manual/* because historical orders
+// reference its method keys and their stored instructions must still render.
+// It is simply no longer reachable from the catalogue: no enabled method maps to
+// it, so `resolveProviderCodeForMethod` never returns "manual" for a method a
+// customer can choose.
 // ============================================================================
 import { AppError } from "@/lib/errors";
 import { assertPaymentProvider } from "./contract.js";
-import { manualTransferProvider } from "./manual/index.js";
 import { midtransProvider } from "./midtrans/index.js";
 
 /** @type {Record<string, object>} */
 const REGISTRY = {
-  // Manual bank transfer — the method that works before a gateway is chosen.
-  // Its credentials are bank accounts, not an API key.
-  manual: manualTransferProvider,
-  // Midtrans Snap — gateway. Its credentials are MIDTRANS_SERVER_KEY etc.
-  // Payment instructions are a Snap redirect URL, not an account number.
   midtrans: midtransProvider,
 };
 
@@ -82,20 +78,16 @@ export { REGISTRY as PAYMENT_PROVIDER_REGISTRY };
 
 // ── Method → adapter resolution ──────────────────────────────────────────────
 // An internal payment METHOD (src/config/payment.js) is not the same thing as a
-// payment PROVIDER (this registry). Several methods may be served by one adapter
-// (every offline bank and e-wallet by the manual adapter), and one method may
-// later be served by a different adapter without any UI change. The mapping
-// lives here, next to the adapters, so a new gateway adds itself in one place.
+// payment PROVIDER (this registry). Several methods are served by one adapter —
+// every method here is served by Midtrans — but the indirection is kept so a
+// second gateway can be added later without touching the catalogue or the UI.
 //
-// Keys are matched by PREFIX for the offline methods so that adding
-// `manual_bank_cimb` to the catalogue does not require a second edit here — the
-// mistake of forgetting the second edit is exactly how a method becomes visible
-// in the UI but unservable at checkout.
+// A method key absent from this map is UNSERVABLE, which is how a typo'd key
+// fails loudly at checkout instead of silently charging nobody. This is also
+// what RETIRES the manual methods: no `manual_bank_*` / `manual_ewallet_*` key
+// appears below, so those keys resolve to null and are refused — both in the
+// checkout list and by the server at order creation.
 const METHOD_PROVIDER_EXACT = {
-  manual_transfer: "manual",
-  // Gateway methods map to Midtrans. These are the exact keys enabled in
-  // src/config/payment.js; a key absent from both maps is unservable, which is
-  // how a typo'd method key fails loudly instead of charging nobody.
   qris: "midtrans",
   card_credit: "midtrans",
   card_debit: "midtrans",
@@ -107,8 +99,6 @@ const METHOD_PROVIDER_EXACT = {
 };
 
 const METHOD_PROVIDER_PREFIX = [
-  ["manual_bank_", "manual"],
-  ["manual_ewallet_", "manual"],
   // Virtual accounts: `va_bca`, `va_bni`, … — all Midtrans VA channels.
   ["va_", "midtrans"],
 ];

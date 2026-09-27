@@ -76,7 +76,12 @@ export default function PaymentInstructions({ orderId, payment, onIssued }) {
 
     const result = await apiPost("/api/payment/instructions", {
       orderId,
-      paymentMethod: payment?.method || "manual_transfer",
+      // A method is always stored on the payment row by the time instructions
+      // are issued. The fallback stays for payments so old their row predates
+      // the column; it must be a key that still resolves, and `manual_transfer`
+      // no longer does — see the legacy block in src/config/payment.js. It now
+      // re-issues as QRIS, the lowest-friction channel, rather than failing.
+      paymentMethod: payment?.method || "qris",
     });
 
     setBusy(false);

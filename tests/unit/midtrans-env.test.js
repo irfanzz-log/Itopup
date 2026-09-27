@@ -25,12 +25,15 @@ describe("midtrans env wiring", () => {
     // passes against leftover placeholder values.
     const { clearEnvCache } = await import("@/lib/env.server.js");
     clearEnvCache();
-    delete process.env.MIDTRANS_IS_PRODUCTION;
-    delete process.env.MIDTRANS_SERVER_KEY;
-    delete process.env.MIDTRANS_MERCHANT_ID;
-    delete process.env.MIDTRANS_CLIENT_KEY;
-    delete process.env.MIDTRANS_ENABLED_PAYMENTS;
-    delete process.env.MIDTRANS_FINISH_URL;
+    // `""` not `delete`: loadEnv() re-fills a deleted variable from .env.test on
+    // first import, while an empty string survives it and env.server.js
+    // normalises "" to undefined — the honest "unset" state.
+    process.env.MIDTRANS_IS_PRODUCTION = "";
+    process.env.MIDTRANS_SERVER_KEY = "";
+    process.env.MIDTRANS_MERCHANT_ID = "";
+    process.env.MIDTRANS_CLIENT_KEY = "";
+    process.env.MIDTRANS_ENABLED_PAYMENTS = "";
+    process.env.MIDTRANS_FINISH_URL = "";
     vi.resetModules();
     const { midtransConfig } = await import("@/providers/payment/midtrans/index.js");
     expect(midtransConfig().baseUrl).toBe("https://app.sandbox.midtrans.com");

@@ -227,8 +227,11 @@ describe("midtransProvider (adapter surface)", () => {
   });
 
   it("reports itself as unconfigured without MIDTRANS_SERVER_KEY", async () => {
-    delete process.env.MIDTRANS_SERVER_KEY;
-    delete process.env.MIDTRANS_MERCHANT_ID;
+    // `""` not `delete`: loadEnv() re-fills a deleted variable from .env.test on
+    // first import, while an empty string survives it and env.server.js
+    // normalises "" to undefined — the honest "unset" state.
+    process.env.MIDTRANS_SERVER_KEY = "";
+    process.env.MIDTRANS_MERCHANT_ID = "";
     const { midtransProvider } = await import("@/providers/payment/midtrans/index.js");
     expect(midtransProvider.isConfigured()).toBe(false);
     // The gap list is what the dev settings page shows. Missing credentials are
@@ -289,7 +292,7 @@ describe("midtransProvider (adapter surface)", () => {
   });
 
   it("refuses to create a payment when the server key is absent", async () => {
-    delete process.env.MIDTRANS_SERVER_KEY;
+    process.env.MIDTRANS_SERVER_KEY = "";
     const { midtransProvider } = await import("@/providers/payment/midtrans/index.js");
     const result = await midtransProvider.createPayment({
       invoice: "ITP-1",
@@ -315,7 +318,7 @@ describe("midtransProvider (adapter surface)", () => {
   });
 
   it("treats an unconfigured gateway as unservable per method", async () => {
-    delete process.env.MIDTRANS_SERVER_KEY;
+    process.env.MIDTRANS_SERVER_KEY = "";
     const { midtransProvider } = await import("@/providers/payment/midtrans/index.js");
     const result = midtransProvider.isMethodServable("qris");
     expect(result.ok).toBe(false);
