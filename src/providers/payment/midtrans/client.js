@@ -27,7 +27,11 @@ const UNKNOWN_STATUS_CODES = new Set([408, 425, 429, 500, 502, 503, 504]);
  * AUTH_STRING = base64(`serverKey:`).
  */
 function authHeader(serverKey) {
-  return "Basic " + Buffer.from(`${serverKey}:`, "utf8").digest("base64");
+  // NOTE `.toString`, not `.digest`: `base64` here is an ENCODING of the buffer,
+  // not a hash. Calling `.digest` on a Buffer throws at runtime —
+  // "Buffer.from(...).digest is not a function" — and broke every payment
+  // instruction at issue time. Only crypto.Hash has `.digest`.
+  return "Basic " + Buffer.from(`${serverKey}:`, "utf8").toString("base64");
 }
 
 /**
