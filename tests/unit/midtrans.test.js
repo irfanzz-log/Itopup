@@ -228,13 +228,35 @@ describe("midtransProvider (adapter surface)", () => {
 
   it("reports itself as unconfigured without MIDTRANS_SERVER_KEY", async () => {
     delete process.env.MIDTRANS_SERVER_KEY;
+    delete process.env.MIDTRANS_MERCHANT_ID;
     const { midtransProvider } = await import("@/providers/payment/midtrans/index.js");
     expect(midtransProvider.isConfigured()).toBe(false);
-    expect(midtransProvider.configurationGaps().missing).toEqual(["MIDTRANS_SERVER_KEY"]);
+    // The gap list is what the dev settings page shows. Missing credentials are
+    // both named so the operator sees exactly what to fill in.
+    expect(midtransProvider.configurationGaps().missing).toEqual([
+      "MIDTRANS_SERVER_KEY",
+      "MIDTRANS_MERCHANT_ID",
+    ]);
+  });
+
+  it("ignores placeholder keys, not just empty ones", async () => {
+    // .env files carry the literal marker "GANTI-SERVER-KEY" for unset keys. A
+    // non-empty placeholder must not pass as configured, or checkout offers a
+    // gateway that 401s on every real transaction.
+    process.env.MIDTRANS_SERVER_KEY = "GANTI-SERVER-KEY";
+    process.env.MIDTRANS_MERCHANT_ID = "GANTI-MERCHANT-ID";
+    vi.resetModules();
+    const { midtransProvider } = await import("@/providers/payment/midtrans/index.js");
+    expect(midtransProvider.isConfigured()).toBe(false);
+    expect(midtransProvider.configurationGaps().missing).toEqual([
+      "MIDTRANS_SERVER_KEY",
+      "MIDTRANS_MERCHANT_ID",
+    ]);
   });
 
   it("reports configured when the server key is set, and can enumerate gaps", async () => {
     process.env.MIDTRANS_SERVER_KEY = "SB-Mid-server-TEST";
+    process.env.MIDTRANS_MERCHANT_ID = "M001";
     const { midtransProvider } = await import("@/providers/payment/midtrans/index.js");
     expect(midtransProvider.isConfigured()).toBe(true);
     expect(midtransProvider.configurationGaps().missing).toEqual([]);

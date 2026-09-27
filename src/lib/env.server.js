@@ -110,7 +110,8 @@ export function envReport() {
     "PAYMENT_PROVIDER", "PAYMENT_API_KEY", "PAYMENT_SECRET", "PAYMENT_WEBHOOK_SECRET",
     // Midtrans is the payment gateway; only the configured-ness and mode are
     // reported, never the keys themselves.
-    "MIDTRANS_SERVER_KEY", "MIDTRANS_IS_PRODUCTION", "MIDTRANS_FINISH_URL",
+    "MIDTRANS_MERCHANT_ID", "MIDTRANS_SERVER_KEY", "MIDTRANS_CLIENT_KEY",
+    "MIDTRANS_IS_PRODUCTION", "MIDTRANS_FINISH_URL", "MIDTRANS_ENABLED_PAYMENTS",
     "RATE_LIMIT_URL", "RATE_LIMIT_TOKEN",
   ];
   return names.map((name) => ({

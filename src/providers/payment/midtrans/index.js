@@ -41,18 +41,38 @@ const SANDBOX_BASE = "https://app.sandbox.midtrans.com";
 const PRODUCTION_BASE = "https://app.midtrans.com";
 
 /**
- * Read configuration. Server Key is the ONLY credential this adapter needs;
- * the Client Key is not used server-side and is exposed to the browser by the
- * page via a public string.
+ * The .env files ship unset Midtrans keys as the literal placeholder
+ * "GANTI-SERVER-KEY" so the line is visible and unmissable. A non-empty
+ * placeholder must NOT count as configured: without this guard a developer who
+ * copies the file and forgets to fill it in gets a gateway that looks live,
+ * every gateway method appears at checkout, and every payment then fails with
+ * a 401 from Midtrans. Treat any key still carrying the marker as unset.
+ */
+const PLACEHOLDER = /^GANTI-/;
+
+function isPlaceholder(value) {
+  return typeof value === "string" && PLACEHOLDER.test(value.trim());
+}
+
+/**
+ * Read configuration. Server Key is the ONLY credential this adapter uses to
+ * call the API — Snap authenticates with Basic Auth (username = Server Key,
+ * password empty), so Merchant ID is not part of the request.
+ *
+ * Client Key is deliberately NOT read here. It belongs to the browser (Snap.js);
+ * we use the redirect_url flow instead, so nothing on the server uses it.
  */
 export function midtransConfig() {
-  const serverKey = optional("MIDTRANS_SERVER_KEY");
+  const rawServerKey = optional("MIDTRANS_SERVER_KEY");
+  const rawMerchantId = optional("MIDTRANS_MERCHANT_ID");
   const isProduction = optional("MIDTRANS_IS_PRODUCTION") === "true";
   const baseUrl = isProduction ? PRODUCTION_BASE : SANDBOX_BASE;
   const enabledPayments = optional("MIDTRANS_ENABLED_PAYMENTS");
   const finishUrl = optional("MIDTRANS_FINISH_URL");
   return {
-    serverKey,
+    /// null (not the placeholder) when the real key is not filled in yet.
+    serverKey: isPlaceholder(rawServerKey) ? null : rawServerKey,
+    merchantId: isPlaceholder(rawMerchantId) ? null : rawMerchantId,
     baseUrl,
     isProduction,
     /// JSON array string e.g. ["credit_card","gopay","bca_va","qris"]; null = let
@@ -77,8 +97,13 @@ function isConfigured() {
 }
 
 function configurationGaps() {
+  // Must go through midtransConfig(), not raw optional(): a placeholder key is
+  // non-empty, so a raw read reports the gateway as fully configured while the
+  // real key is still missing.
+  const { serverKey, merchantId } = midtransConfig();
   const missing = [];
-  if (!optional("MIDTRANS_SERVER_KEY")) missing.push("MIDTRANS_SERVER_KEY");
+  if (!serverKey) missing.push("MIDTRANS_SERVER_KEY");
+  if (!merchantId) missing.push("MIDTRANS_MERCHANT_ID");
   return { missing };
 }
 
