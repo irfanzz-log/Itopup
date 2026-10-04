@@ -1,5 +1,5 @@
 // ============================================================================
-// Melostore H2H — field mapper.
+// Melostore H2H: field mapper.
 //
 // THE ONLY FILE IN THE PROJECT WHERE A MELOSTORE PARAMETER NAME MAY APPEAR.
 // Everything upstream speaks the internal shape; everything downstream consumes
@@ -10,16 +10,16 @@
 // The mapping below is not guessed. The documentation defines exactly three
 // transaction target parameters plus an overflow object:
 //
-//   customer_target        — "Nomor target ID / nomor tujuan penerima pulsa."
-//   customer_target_zone   — "Nomor zone ID game (jika dibutuhkan, seperti ML)."
-//   additional_data        — extra target fields as a JSON object, e.g.
+//   customer_target        : "Nomor target ID / nomor tujuan penerima pulsa."
+//   customer_target_zone   : "Nomor zone ID game (jika dibutuhkan, seperti ML)."
+//   additional_data        : extra target fields as a JSON object, e.g.
 //                            { "zone_2": "1" } for Genshin (TH). "Nama key harus
 //                            sesuai dengan key field tambahan pada inquiry_forms
 //                            produk di pricelist."
 //
 // There is therefore no per-field name table to fill in: every internal field
 // maps onto one of those three slots. Adding a new game needs no new field name,
-// only the right `inquiry_forms` key — which the pricelist sync reads from the
+// only the right `inquiry_forms` key, which the pricelist sync reads from the
 // provider and stores, rather than us hardcoding it.
 // ============================================================================
 
@@ -45,18 +45,84 @@ export const PRIMARY_TARGET_FIELD = {
   //
   // EVERY e-wallet slug must be listed here. The lookup falls back to `userId`,
   // so a wallet added to the catalogue without an entry here would dispatch with
-  // the wrong target slot — or throw "Field userId wajib diisi" at checkout.
+  // the wrong target slot, or throw "Field userId wajib diisi" at checkout.
   // There is a test that fails when a catalogue game is missing from this table.
   pulsa: "phoneNumber",
-  // eFootball: the provider's own form asks for Login + Password. We never
-  // collect a password, so the primary target is the plain user id the game
-  // exposes. Dispatch for this game is blocked upstream (no provider links, see
-  // GAME_SEED) rather than reaching this table.
-  efootball: "userId",
+  // eFootball: the provider's inquiry form is {"target": "Login",
+  // "zone": "Password"} (form key a72a0ff…). The primary target is therefore
+  // the game login identifier collected by the gameLogin field, and the
+  // password, a secret resolved by the order service from the encrypted
+  // GameCredential row and never from Order.customerInput, is carried in the
+  // zone slot the provider asked for. The secret is NEVER written to the order
+  // row; this mapper only places a value the caller already holds in memory.
+  efootball: "gameLogin",
+
+  // Games added from the Melostore pricelist. Each entry was read off the
+  // brand's own inquiry form: a form whose first field is labelled "Player ID"
+  // collects playerId, and the fallback here is userId, so without an entry
+  // dispatch throws "Field userId wajib diisi" on a form that never asked for
+  // one, or worse, sends an empty target.
+  "farlight-84": "playerId",
+  "pixel-gun-3d": "playerId",
+  "honor-of-kings": "playerId",
+  "hatsune-miku-colorful-stage": "playerId",
+  "lords-mobile": "playerId",
+  "whiteout-survival": "playerId",
+  "magic-chess-go-go": "userId",
+  "ensemble-stars-music": "playerId",
+  "hero-clash": "playerId",
+
+  // Indonesia-only ladders (h2h_pricelist_2026-10-04.xlsx). Read off each
+  // brand's own inquiry form the same way: the field the provider asks for
+  // decides which checkout input fills the target slot. Games absent here fall
+  // back to `userId`, which is wrong for every one of these.
+  "8-ball-pool": "playerId",
+  "apex-legends-mobile": "playerId",
+  // Arena of Valor and Magic Chess use the Moonton pairing (id + zone).
+  "arena-of-valor": "userId",
+  "battlenet-gift-card": "username",
+  "dead-target": "playerId",
+  "dunk-city-dynasty": "playerId",
+  "eafc-mobile": "playerId",
+  "garena-shells": "username",
+  "garena-undawn": "playerId",
+  "google-play": "username",
+  // HoYoverse pairing: a UID plus the server the account lives on.
+  "honkai-star-rail": "userId",
+  "league-of-legends": "username",
+  "wild-rift": "username",
+  "legends-of-runeterra": "username",
+  "point-blank": "playerId",
+  "pokemon-unite": "playerId",
+  "rainbow-six-mobile": "playerId",
+  "razer-gold": "username",
+  "tft-mobile": "username",
+  "the-moonlit-oath": "playerId",
+  "tiktok-gift-card": "username",
+  "unipin-gift-card": "username",
+  "valorant": "username",
+  "zenless-zone-zero": "userId",
 };
 
 /** Internal field keys that must be sent inside `additional_data`, not at top level. */
 export const EXTRA_TARGET_FIELDS = ["zone2", "serverId", "region"];
+
+/**
+ * Which internal field key carries the SECOND target slot (customer_target_zone),
+ * per game.
+ *
+ * The default is the classic game pairing, a zone id alongside the user id,
+ * so every existing game is unchanged. eFootball is the exception: its
+ * provider inquiry form labels the second slot "Password", so the secret the
+ * checkout collected as `gamePassword` must land there and NOT in
+ * additional_data. Without this map the secret would be packaged into
+ * additional_data (harmless to the provider, but a second copy of it in the
+ * payload) and customer_target_zone would be omitted entirely (fatal: the
+ * provider's form requires it).
+ */
+export const ZONE_TARGET_FIELD = {
+  efootball: "gamePassword",
+};
 
 /**
  * Internal game slug → Melostore `game_code`, used by the check-nickname
@@ -77,6 +143,14 @@ export const GAME_MAP = {
   "genshin-impact": "genshin-impact",
   pulsa: "pulsa",
   efootball: "efootball",
+
+  // Indonesia-only ladders. The check-nickname path is only reachable for the
+  // games that advertise validation, so only those need a code here; the rest
+  // dispatch fine without one. Codes are the provider's published game names.
+  "arena-of-valor": "arena-of-valor-indonesia",
+  "magic-chess-go-go": "magic-chess-go-go",
+  "honkai-star-rail": "honkai-star-rail",
+  "zenless-zone-zero": "zenless-zone-zero",
 };
 
 /**
@@ -102,23 +176,37 @@ export const DOCUMENTED_GAME_CODES = new Set([
   // game table; treated as known so the catalogue still works for them.
   "mobile-legends", "free-fire", "pubg-mobile", "roblox", "genshin-impact",
   "pulsa", "efootball",
+  // Indonesia ladders that dispatch through the transaction flow but are not in
+  // the published check-nickname table either. Listed here so mapGameToProvider
+  // accepts them; validation simply stays off for the ones that do not claim it.
+  "magic-chess-go-go", "honkai-star-rail", "zenless-zone-zero",
 ]);
 
 /**
  * Melostore transaction status → our normalised PROVIDER_ORDER_STATUS.
  *
- * Copied verbatim from the documented "Daftar Status Transaksi" table:
- *   pending | processing | success | failed | refunded
- *
- * Anything absent falls through to UNKNOWN, which triggers reconciliation
- * instead of settling on a wrong terminal state.
+ * VERIFIED LIVE: the API returns ENGLISH status strings (a real sandbox
+ * transaction returned "status": "pending" (see scripts/live-status.ops.test.js
+ * and /tmp/live-status.json), not the Indonesian the dashboard UI uses. The
+ * Indonesian spellings below are kept as defensive aliases only: an unmapped
+ * status falls through to UNKNOWN, which providerStatusToOrderStatus turns
+ * into PROCESSING, and a delivered order would then be stuck in PROCESSING
+ * forever. Never prune these to "the documented five" without a live callback
+ * capture proving they are unused.
  */
 export const STATUS_MAP = {
   pending: "PENDING",
   processing: "PROCESSING",
   success: "SUCCESS",
+  sukses: "SUCCESS",
+  berhasil: "SUCCESS",
   failed: "FAILED",
+  gagal: "FAILED",
   refunded: "REFUND",
+  refund: "REFUND",
+  cancelled: "CANCELLED",
+  canceled: "CANCELLED",
+  batal: "CANCELLED",
 };
 
 /**
@@ -160,6 +248,7 @@ export function mapGameToProvider(gameSlug) {
 export function mapFieldsToProvider({ gameSlug, fields } = {}) {
   const source = fields || {};
   const primaryKey = PRIMARY_TARGET_FIELD[gameSlug] ?? "userId";
+  const zoneKey = ZONE_TARGET_FIELD[gameSlug] ?? "zoneId";
 
   const target = source[primaryKey];
   if (target === undefined || String(target).trim() === "") {
@@ -170,17 +259,23 @@ export function mapFieldsToProvider({ gameSlug, fields } = {}) {
 
   const out = { customer_target: String(target).trim().slice(0, 64) };
 
-  const zone = source.zoneId ?? source.server;
+  const zone = source[zoneKey] ?? source.zoneId ?? source.server;
   if (zone !== undefined && String(zone).trim() !== "") {
     out.customer_target_zone = String(zone).trim().slice(0, 64);
   }
 
   // Everything else the game's config declares goes into additional_data, keyed
-  // exactly as the game config names it — the docs require the key to match the
+  // exactly as the game config names it; the docs require the key to match the
   // product's inquiry_forms entry.
+  //
+  // The PRIMARY and ZONE keys are excluded, so a game whose second slot is a
+  // secret (eFootball) sends that secret exactly once, in the slot the provider
+  // asked for. Leaving it in additional_data too would duplicate a credential
+  // into the payload for no reason.
   const extras = {};
   for (const [key, value] of Object.entries(source)) {
-    if (key === primaryKey || key === "zoneId" || key === "server") continue;
+    if (key === primaryKey || key === zoneKey) continue;
+    if (key === "zoneId" || key === "server") continue;
     if (value === undefined || String(value).trim() === "") continue;
     extras[key] = String(value).trim().slice(0, 64);
   }
@@ -217,7 +312,7 @@ function unwrap(body) {
  *
  * `buyer_trx_id` is our own reference. The docs state its purpose is "untuk
  * mencegah pemesanan ganda" (to prevent duplicate ordering), which is what
- * makes a transport retry safe — see order.js.
+ * makes a transport retry safe (see order.js).
  *
  * @param {import('../contract.js').NormalizedOrderRequest} input
  */
@@ -253,7 +348,7 @@ export function normalizeOrderResponse(body) {
 
   return {
     // The docs' `data.id` is the provider's own transaction id; `buyer_trx_id`
-    // is ours echoed back. Both are kept — reconciliation can look up by either.
+    // is ours echoed back. Both are kept, so reconciliation can look up by either.
     providerOrderId: data.id ? String(data.id) : null,
     providerRef: data.buyer_trx_id ? String(data.buyer_trx_id) : null,
     status: mapProviderStatus(data.status),
@@ -288,7 +383,7 @@ export function normalizeStatusResponse(body) {
  *
  * The documented distinction that matters: a NON-EXISTENT account is an HTTP 422
  * with `error.category: "not_found"` (code 4001), not a 200 with a flag. That
- * case is handled in validation.js before this is called — this function only
+ * case is handled in validation.js before this is called; this function only
  * ever sees a successful lookup.
  */
 export function normalizeValidationResponse(body) {
@@ -321,7 +416,7 @@ export function normalizeValidationResponse(body) {
  * Documented fields: name, sku_code, price, category_name, brand_id, type_name,
  * server_code, server_name, status, inquiry_form_key.
  *
- * `price` is the provider's price for OUR tier, in rupiah — this is the COST,
+ * `price` is the provider's price for OUR tier, in rupiah: this is the COST,
  * never the selling price. Markup is applied by the sync service.
  */
 export function normalizeProductEntry(entry) {
@@ -348,7 +443,7 @@ export function normalizeProductEntry(entry) {
     serverCode: entry.server_code ? String(entry.server_code) : null,
     serverName: entry.server_name ? String(entry.server_name) : null,
     // Stored so the UI can render the right input fields without hardcoding
-    // them — the provider is the authority on what a product needs.
+    // them; the provider is the authority on what a product needs.
     inquiryFormKey: entry.inquiry_form_key ? String(entry.inquiry_form_key) : null,
     brandId: entry.brand_id !== undefined ? Number(entry.brand_id) : null,
   };
