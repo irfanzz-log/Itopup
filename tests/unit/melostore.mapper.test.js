@@ -468,6 +468,8 @@ describe("catalogue ↔ mapper contract", () => {
       serverId: "2001",
       playerId: "510380815",
       username: "someuser",
+      email: "player@example.com",
+      riotId: "Player#1234",
       phoneNumber: "081234567890",
       region: "ID",
       gameLogin: "player@example.com",
@@ -503,6 +505,51 @@ describe("catalogue ↔ mapper contract", () => {
         fields: { phoneNumber: "081234567890" },
       });
       expect(out.customer_target, `game ${game.slug}`).toBe("081234567890");
+    }
+  });
+
+  it("asks for an email on every brand whose provider form is an email form", async () => {
+    // Read off the provider's own inquiry forms (form key
+    // 76af692ff8ef88e1146e67fe4602414f914dc912, label "Email", type "email"):
+    // Google Play, Razer Gold, Battle.net, Garena Shells, TikTok, Unipin and
+    // Roblox all redeem to an address. These were declared as `username`, whose
+    // pattern forbids `@`, so a valid address was rejected at checkout by our
+    // own validation while the provider was waiting for one.
+    const { GAME_SEED } = await import("../../src/config/games.js");
+
+    const EMAIL_SLUGS = [
+      "roblox",
+      "battlenet-gift-card",
+      "garena-shells",
+      "google-play",
+      "razer-gold",
+      "tiktok-gift-card",
+      "unipin-gift-card",
+    ];
+    for (const slug of EMAIL_SLUGS) {
+      const game = GAME_SEED.find((g) => g.slug === slug);
+      expect(game, `game ${slug} must exist`).toBeDefined();
+      expect(game.inputFields.map((f) => f.key), `game ${slug}`).toContain("email");
+    }
+  });
+
+  it("labels the Riot field as Riot ID, not username", async () => {
+    // The provider's inquiry form for Riot's brands is a plain `text` field
+    // labelled "Riot ID". Riot IDs carry a `#TAG`, which the `username` preset
+    // forbids, so checkout rejected the very format the provider documents.
+    const { GAME_SEED } = await import("../../src/config/games.js");
+
+    const RIOT_SLUGS = [
+      "valorant",
+      "league-of-legends",
+      "wild-rift",
+      "legends-of-runeterra",
+      "tft-mobile",
+    ];
+    for (const slug of RIOT_SLUGS) {
+      const game = GAME_SEED.find((g) => g.slug === slug);
+      expect(game, `game ${slug} must exist`).toBeDefined();
+      expect(game.inputFields.map((f) => f.key), `game ${slug}`).toContain("riotId");
     }
   });
 });

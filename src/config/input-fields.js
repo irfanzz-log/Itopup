@@ -133,6 +133,57 @@ export const FIELD_PRESETS = {
     errorMessage: "Username harus 3–32 karakter.",
   },
 
+  /** Email destination: stored-value gift cards the provider redeems by email.
+   *
+   * The provider's own inquiry form for these brands declares
+   * `type: "email"` with the placeholder "Masukkan alamat email", so the field
+   * must accept an address. The generic `username` preset above forbids `@`,
+   * which made a valid Google Play / Razer Gold target fail validation at
+   * checkout — the input contract came from a username-shaped game, not from
+   * the product being sold.
+   *
+   * The pattern is deliberately not the full RFC: the provider's own validation
+   * is what decides whether an address can be redeemed, and a stricter local
+   * check would only add new ways to reject an address the supplier accepts.
+   * It pins the two things a mistyped address cannot survive: exactly one `@`
+   * and a domain with a dot.
+   */
+  email: {
+    key: "email",
+    label: "Email",
+    placeholder: "email@contoh.com",
+    type: "email",
+    inputMode: "email",
+    autoCapitalize: "off",
+    autoComplete: "email",
+    pattern: "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$",
+    minLength: 5,
+    maxLength: 254,
+    required: true,
+    helpText: "Email akun tempat voucher dikirim.",
+    errorMessage: "Masukkan alamat email yang valid, contoh nama@email.com.",
+  },
+
+  /** Riot ID, for Riot's own games: Valorant, Wild Rift, TFT, LoL, Runeterra.
+   *
+   * The provider labels this field "Riot ID" (inquiry form type `text`), not
+   * "username". Riot IDs carry a `#TAG`, so unlike the generic username preset
+   * the pattern admits `#` and uppercase letters.
+   */
+  riotId: {
+    key: "riotId",
+    label: "Riot ID",
+    placeholder: "Contoh: Player#1234",
+    type: "text",
+    inputMode: "text",
+    pattern: "^[A-Za-z0-9._# -]{3,32}$",
+    minLength: 3,
+    maxLength: 32,
+    required: true,
+    helpText: "Riot ID terlihat di profil atau pengaturan akun di dalam game.",
+    errorMessage: "Riot ID harus 3–32 karakter (huruf, angka, . _ # -).",
+  },
+
   region: {
     key: "region",
     label: "Region",
