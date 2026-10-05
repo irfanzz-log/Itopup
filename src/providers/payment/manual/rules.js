@@ -1,11 +1,11 @@
 // ============================================================================
-// Manual / offline transfer — the pure rules.
+// Manual / offline transfer: the pure rules.
 //
 // WHY THIS FILE EXISTS
 //
 // `client.js` reads secrets from the environment, so it carries the
 // server-only guard and can never be imported from a client component.
-// The rules in THIS file answer questions that need no secrets at all —
+// The rules in THIS file answer questions that need no secrets at all:
 // which channel a method key names, and how a key narrows a destination
 // list. They are shared so one definition decides both the offer and the
 // instruction; two copies is how the UI offers a method the server then
@@ -38,7 +38,7 @@ export function normaliseDestination(raw, kindHint) {
  * change:
  *   MANUAL_BANK_ACCOUNTS='[{"bank":"BCA","number":"1234567890","holder":"PT ITOPUP"}]'
  *
- * An empty list means that channel is not usable — the caller reports it, so
+ * An empty list means that channel is not usable; the caller reports it, so
  * checkout refuses rather than showing a customer a destination that does not
  * exist.
  */
@@ -76,7 +76,7 @@ export function channelForMethod(method) {
 /**
  * Narrow a channel's destination list to the ONE the chosen method named.
  *
- * A method key is `manual_<channel>_<id>` — `manual_bank_bca`,
+ * A method key is `manual_<channel>_<id>`, e.g. `manual_bank_bca` or
  * `manual_ewallet_dana`. The trailing id is matched case-insensitively
  * against each destination's name, so a customer who picks DANA is shown only
  * the DANA number, not every wallet we hold. Listing them all after the
@@ -85,7 +85,7 @@ export function channelForMethod(method) {
  * The GENERIC methods keep the whole list, on purpose:
  *   * `manual_bank_lainnya` / `manual_ewallet_lainnya` mean the customer's own
  *     bank or wallet is not among the ones we named, so they pick from what we
- *     do have — the list is the answer.
+ *     do have; the list is the answer.
  *   * the legacy `manual_transfer` key never named a destination at all.
  *
  * A name that matches nothing also falls back to the full list rather than to
@@ -112,7 +112,7 @@ export function destinationsForMethod(method, all) {
  * Adapter-wide `isConfigured()` answers a different question ("can this adapter
  * take any payment at all"). Offering a bank transfer when only an e-wallet
  * number is configured passes that check and then hands the customer
- * instructions they cannot follow — so per-method servability is asked
+ * instructions they cannot follow, so per-method servability is asked
  * separately, and the reason names the missing channel.
  */
 export function methodConfiguredResult(method, all) {
@@ -128,6 +128,6 @@ export function methodConfiguredResult(method, all) {
   };
 }
 
-/** Keeps `formatNumber` in the bundle graph of this module — it formats the
+/** Keeps `formatNumber` in the bundle graph of this module; it formats the
  * account number on the server when building instructions. */
 export const _formats = { formatNumber };

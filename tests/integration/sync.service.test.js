@@ -1,5 +1,5 @@
 // ============================================================================
-// Catalog sync — end-to-end against a MOCKED fetch.
+// Catalog sync, end-to-end against a MOCKED fetch.
 //
 // This is the strongest available proof short of a real partner account: the
 // real adapter code path runs (client → auth headers → mapper → sync service →
@@ -234,7 +234,7 @@ describe("syncProviderCatalog", () => {
 
   it("does NOT overwrite an admin-pinned selling price", async () => {
     const variant = await prisma.productVariant.findFirstOrThrow({});
-    // An admin pinned 999000 — deliberately far from any derived value.
+    // An admin pinned 999000, deliberately far from any derived value.
     await prisma.productVariant.update({
       where: { id: variant.id },
       data: { costPrice: 250000, sellingPrice: 999000 },
@@ -279,6 +279,41 @@ describe("syncProviderCatalog", () => {
     expect(link.isAvailable).toBe(false);
   });
 
+  it("prices AIRTIME with the flat Rp spread, not the 4% game markup", async () => {
+    // The provider's live category_name for pulsa is the LONG string
+    // "Airtime & Data (Pulsa & Data)", not "Airtime". An exact comparison fell
+    // through and every airtime SKU got the game markup, so a Rp 95.265 card
+    // was offered at ~Rp 99.076 instead of Rp 96.265.
+    const variant = await prisma.productVariant.findFirstOrThrow({});
+    // Start UNPINNED: sellingPrice exactly the derived value for the current
+    // cost, so the sync is free to re-derive it.
+    await prisma.productVariant.update({
+      where: { id: variant.id },
+      data: { costPrice: 95265, sellingPrice: 96265 },
+    });
+    const provider = await prisma.provider.create({ data: { code: "melostore", name: "Melostore H2H" } });
+    await prisma.providerProduct.create({
+      data: {
+        providerId: provider.id,
+        productVariantId: variant.id,
+        providerCode: "ml-id-1045",
+        providerPrice: 95265,
+      },
+    });
+
+    replyWith(
+      [row({ price: 95265, category_name: "Airtime & Data (Pulsa & Data)" })],
+      meta(),
+    );
+    await syncProviderCatalog({});
+
+    const updated = await prisma.productVariant.findUniqueOrThrow({ where: { id: variant.id } });
+    expect(updated.costPrice).toBe(95265);
+    // Flat Rp 1.000, exactly, no percentage and no rounding step.
+    expect(updated.sellingPrice).toBe(96265);
+  });
+
+
   it("persists the documented brand + inquiry-form reference data", async () => {
     replyWith([row({ sku_code: "unmatched-x" })], meta());
     await syncProviderCatalog({});
@@ -315,7 +350,7 @@ describe("syncProviderCatalog", () => {
   // `dzs10ko-s4`, `dgs10ko-s4` and `dpsnoa10ko-s4` all deliver "Rp. 10.000".
   // A mapping rule resolved all of them to the same variant, and because
   // provider_products has @@unique([providerId, productVariantId]) the second
-  // insert raised P2002 and rolled back the entire sync — including every
+  // insert raised P2002 and rolled back the entire sync, including every
   // other link in the same transaction.
   //
   // Both collision shapes are covered: two brand-new SKUs on one variant, and
@@ -338,7 +373,7 @@ describe("syncProviderCatalog", () => {
       },
     });
 
-    // Family A is ALREADY LINKED — the row exists under its own provider code.
+    // Family A is ALREADY LINKED, the row exists under its own provider code.
     const provider = await prisma.provider.create({ data: { code: "melostore", name: "Melostore H2H" } });
     await prisma.providerProduct.create({
       data: {
@@ -369,7 +404,7 @@ describe("syncProviderCatalog", () => {
 
     const report = await syncProviderCatalog({});
 
-    // No P2002 — the sync completes.
+    // No P2002, the sync completes.
     expect(report.ok).toBe(true);
 
     // The existing link is refreshed, NOT duplicated.

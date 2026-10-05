@@ -5,7 +5,7 @@
 //
 // `error.message` is deliberately NOT rendered. In production Next replaces the
 // message of a server error with a generic string, but in development it is the
-// real one — which can contain a connection string, a table name, or a file
+// real one, which can contain a connection string, a table name, or a file
 // path. The digest is shown instead: it correlates this page with the server log
 // line, which is where the detail belongs.
 // ============================================================================

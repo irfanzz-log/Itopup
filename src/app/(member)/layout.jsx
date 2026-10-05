@@ -1,5 +1,5 @@
 // ============================================================================
-// /member layout — the REAL authorization gate for the member area.
+// /member layout, the REAL authorization gate for the member area.
 //
 // src/proxy.js only checks that a cookie EXISTS. This layout is what actually
 // verifies it against the database and refuses blocked accounts, and it runs

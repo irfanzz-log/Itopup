@@ -7,7 +7,7 @@ import { Skeleton, SkeletonCard } from "@/components/ui/primitives";
  * renders the 404 UI while the HTTP status stays 200. A 200 on a missing record
  * poisons caches and SEO, so the 404 status matters more than a skeleton on the
  * root segment. Kept here anyway because the root layout renders the header
- * (which awaits a DB read) on EVERY route — without it, every first paint is a
+ * (which awaits a DB read) on EVERY route, without it, every first paint is a
  * blank screen while the nav resolves.
  *
  * Segment-level loading.jsx files (products, orders) do the fine-grained work.

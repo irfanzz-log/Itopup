@@ -2,7 +2,7 @@
 // Shared client-side API helper.
 //
 // Reads the CSRF cookie and echoes it in the header. The cookie is not a secret
-// (it is readable by design) — it proves the request was built by our own page,
+// (it is readable by design); it proves the request was built by our own page,
 // which is the second layer after the SameSite cookie and the Origin check.
 //
 // The error envelope is normalised so every form can render `error.message`
@@ -58,7 +58,7 @@ export async function apiFetch(url, { method = "GET", body, signal } = {}) {
   try {
     payload = await response.json();
   } catch {
-    // A non-JSON body (a proxy error page, a 502) — report it generically.
+    // A non-JSON body (a proxy error page, a 502): report it generically.
     return {
       ok: false,
       error: {
@@ -89,11 +89,16 @@ export async function apiFetch(url, { method = "GET", body, signal } = {}) {
  * Convenience wrapper for JSON POSTs.
  *
  * Returns the same discriminated union as `apiFetch`, so callers branch on
- * `result.ok` and never have to look at a status code — except where the status
+ * `result.ok` and never have to look at a status code, except where the status
  * itself is the decision (401 → send the visitor to /login).
  */
 export function apiPost(url, body, options = {}) {
   return apiFetch(url, { ...options, method: "POST", body });
+}
+
+/** Same, for a GET with no body. */
+export function apiGet(url, options = {}) {
+  return apiFetch(url, { ...options, method: "GET" });
 }
 
 /** Same, for PATCH/PUT. */
@@ -106,7 +111,7 @@ export function apiSend(url, body, { method = "PATCH", ...options } = {}) {
  *
  * Accepts ONLY a same-site absolute path. `//evil.com` and `https://evil.com`
  * are protocol-relative/absolute URLs that a naive `startsWith("/")` check
- * would let through — that is a classic open redirect.
+ * would let through. That is a classic open redirect.
  */
 export function safeNextPath(value, fallback = "/member") {
   if (typeof value !== "string" || !value) return fallback;

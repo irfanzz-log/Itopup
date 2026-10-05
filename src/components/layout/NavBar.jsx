@@ -5,12 +5,12 @@
 //
 // Client component because it owns two pieces of interactive state: the mobile
 // drawer and the "Top Up" mega-menu. It receives its data as props from a server
-// component (SiteHeader) — it never fetches, so the nav renders without a
+// component (SiteHeader), it never fetches, so the nav renders without a
 // request waterfall.
 //
 // The member menu is only rendered when `user` is non-null. The server decides
 // that; this component just does not render what it was not given. A client-side
-// "isLoggedIn" flag would be cosmetic — the real gate is the server layout.
+// "isLoggedIn" flag would be cosmetic, the real gate is the server layout.
 // ============================================================================
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -27,7 +27,7 @@ export default function NavBar({ user, categories, popularGames }) {
   const toggleRef = useRef(null);
   const topupRef = useRef(null);
 
-  // Close every overlay on navigation — otherwise the drawer stays open behind
+  // Close every overlay on navigation, otherwise the drawer stays open behind
   // the new page.
   useEffect(() => {
     setMobileOpen(false);
@@ -45,7 +45,7 @@ export default function NavBar({ user, categories, popularGames }) {
     function onPointerDown(event) {
       // The hamburger owns its own state: a tap on it toggles, it must not also
       // be read as an outside-tap. Without this exemption, one tap opened the
-      // drawer and the same pointerdown immediately closed it again — the menu
+      // drawer and the same pointerdown immediately closed it again, the menu
       // could never be dismissed from the button.
       if (toggleRef.current && toggleRef.current.contains(event.target)) return;
       if (menuRef.current && !menuRef.current.contains(event.target)) setMobileOpen(false);
@@ -113,17 +113,21 @@ export default function NavBar({ user, categories, popularGames }) {
                         {category.name}
                       </Link>
                       <ul className="mt-2.5 space-y-1.5">
-                        {category.games.slice(0, 8).map((game) => (
-                          <li key={game.id}>
+                        {/* listGamesGrouped returns `entries`, for PULSA those are
+                            the OPERATORS (Telkomsel, XL, …), not the bare "Pulsa"
+                            game. Reading `games` here showed one "Pulsa" link and
+                            hid every provider. */}
+                        {(category.entries ?? category.games ?? []).slice(0, 8).map((entry) => (
+                          <li key={entry.id}>
                             <Link
-                              href={`/topup/${category.slug}/${game.slug}`}
+                              href={entry.href ?? `/topup/${category.slug}/${entry.slug}`}
                               className="block truncate rounded px-1.5 py-1 text-sm text-foreground-muted transition-colors hover:bg-surface-muted hover:text-foreground"
                             >
-                              {game.name}
+                              {entry.name}
                             </Link>
                           </li>
                         ))}
-                        {category.games.length === 0 ? (
+                        {(category.entries ?? category.games ?? []).length === 0 ? (
                           <li className="px-1.5 py-1 text-sm text-foreground-subtle">Belum tersedia</li>
                         ) : null}
                       </ul>
@@ -208,13 +212,13 @@ export default function NavBar({ user, categories, popularGames }) {
                   <ArrowRight />
                 </Link>
                 <ul className="mt-1.5 grid grid-cols-2 gap-1.5">
-                  {category.games.map((game) => (
-                    <li key={game.id}>
+                  {(category.entries ?? category.games ?? []).map((entry) => (
+                    <li key={entry.id}>
                       <Link
-                        href={`/topup/${category.slug}/${game.slug}`}
+                        href={entry.href ?? `/topup/${category.slug}/${entry.slug}`}
                         className="block truncate rounded-[var(--radius-control)] px-3 py-2 text-sm text-foreground-muted hover:bg-surface-muted"
                       >
-                        {game.name}
+                        {entry.name}
                       </Link>
                     </li>
                   ))}

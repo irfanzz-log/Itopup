@@ -2,11 +2,11 @@
 // Status badge.
 //
 // Every status string in the app comes from src/lib/constants.js. A status the
-// badge does not recognise renders as the raw value in a neutral tone — never
+// badge does not recognise renders as the raw value in a neutral tone, never
 // as a blank chip, because a blank chip looks like a styling bug and hides the
 // real problem (an unmapped status reaching the UI).
 // ============================================================================
-import { ORDER_STATUS_LABEL, ORDER_STATUS_TONE, PAYMENT_STATUS_LABEL } from "@/lib/constants";
+import { ORDER_STATUS_LABEL, ORDER_STATUS_TONE, PAYMENT_STATUS_LABEL, CUSTOMER_ORDER_STATUS } from "@/lib/constants";
 
 const PAYMENT_TONE = {
   PENDING: "warning",
@@ -26,11 +26,23 @@ const TONE_CLASS = {
   neutral: "bg-neutral-bg text-neutral-fg border-neutral-border",
 };
 
-export default function StatusBadge({ status, kind = "order", className = "" }) {
+/**
+ * @param {"order"|"payment"} kind  which lifecycle the status belongs to
+ * @param {"customer"|"operator"} audience  who reads this badge
+ *
+ * `operator` shows the raw lifecycle ("Dibayar", "Pembayaran Diproses"), the
+ * operator can act on the difference between "money captured" and "provider
+ * dispatching". `customer` collapses those into the four ideas a buyer deals
+ * with, so two statuses that mean the same thing to them do not appear side by
+ * side as if they were different.
+ */
+export default function StatusBadge({ status, kind = "order", audience = "operator", className = "" }) {
   const isPayment = kind === "payment";
-  const label = isPayment
-    ? PAYMENT_STATUS_LABEL[status]
-    : ORDER_STATUS_LABEL[status];
+  const orderLabel =
+    audience === "customer" && CUSTOMER_ORDER_STATUS[status]
+      ? CUSTOMER_ORDER_STATUS[status]
+      : ORDER_STATUS_LABEL[status];
+  const label = isPayment ? PAYMENT_STATUS_LABEL[status] : orderLabel;
   const tone = isPayment ? PAYMENT_TONE[status] : ORDER_STATUS_TONE[status];
 
   return (

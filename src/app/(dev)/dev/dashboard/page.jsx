@@ -1,5 +1,5 @@
 // ============================================================================
-// /dev/dashboard — the operational front page.
+// /dev/dashboard, the operational front page.
 //
 // ORDER OF THE SECTIONS IS THE POINT: what needs a human comes first, the
 // numbers come second. A dashboard that opens with revenue and buries "3
@@ -40,14 +40,14 @@ export default async function DevDashboardPage() {
             Tidak ada transaksi yang menunggu tindakan. Semua antrian bersih.
           </p>
         ) : (
-          <StatGrid cols={4}>
-            <StatCard
-              label="Menunggu verifikasi"
-              value={queue.awaitingVerification}
-              hint="Pelanggan menyatakan sudah transfer"
-              tone={queue.awaitingVerification > 0 ? "warning" : "neutral"}
-              href="/dev/orders?status=PAYMENT_PROCESSING"
-            />
+          <StatGrid cols={3}>
+            {/* "Menunggu verifikasi" is GONE: it counted payments sitting in the
+                manual PROCESSING state, waiting for an operator to confirm a
+                bank transfer. Midtrans settles every method we offer
+                automatically (QRIS + VA), so that queue is permanently empty
+                and its card was a box that could never light up. The manual
+                confirm path still exists for an off-platform payment, but it is
+                no longer a thing the dashboard tells the operator to wait on. */}
             <StatCard
               label="Kirim macet"
               value={queue.stuckProcessing}
@@ -56,7 +56,7 @@ export default async function DevDashboardPage() {
               href="/dev/orders?status=PROCESSING"
             />
             <StatCard
-              label="Segera kedaluwarsa"
+              label="Menunggu Pembayaran"
               value={queue.expiringSoon}
               hint="Hangus dalam 30 menit"
               tone={queue.expiringSoon > 0 ? "warning" : "neutral"}
@@ -76,7 +76,7 @@ export default async function DevDashboardPage() {
       {/* ── 2. Money ──────────────────────────────────────────────────────── */}
       <Section
         title="Keuangan"
-        description="Pendapatan hanya dihitung dari transaksi SUCCESS — barang yang benar-benar terkirim."
+        description="Pendapatan hanya dihitung dari transaksi SUCCESS, barang yang benar-benar terkirim."
         className="mb-6"
       >
         <StatGrid cols={4}>
@@ -95,7 +95,7 @@ export default async function DevDashboardPage() {
           <StatCard
             label="Dibayar, belum terkirim"
             value={<Money value={revenue.inFlight.total} />}
-            hint={`${revenue.inFlight.orders} transaksi — uang masuk, barang belum`}
+            hint={`${revenue.inFlight.orders} transaksi. Uang masuk, barang belum`}
             tone={revenue.inFlight.orders > 0 ? "warning" : "neutral"}
           />
           <StatCard
@@ -162,7 +162,7 @@ export default async function DevDashboardPage() {
                   </dl>
                   {provider.balance === 0 ? (
                     <p className="mt-2 text-xs text-danger-fg">
-                      Saldo nol atau belum pernah disinkronkan — transaksi akan ditolak provider.
+                      Saldo nol atau belum pernah disinkronkan. Transaksi akan ditolak provider.
                     </p>
                   ) : null}
                 </li>

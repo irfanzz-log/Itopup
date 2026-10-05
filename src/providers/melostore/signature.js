@@ -1,5 +1,5 @@
 // ============================================================================
-// Melostore H2H — request authentication and callback verification.
+// Melostore H2H: request authentication and callback verification.
 //
 // IMPLEMENTED FROM THE OFFICIAL DOCUMENTATION (h2h.melostore.id/id/docs).
 //
@@ -52,7 +52,7 @@ export function loadAuthCredentials() {
     apiKey: apiKey || null,
     secretKey: secretKey || null,
     webhookSecret: webhookSecret || null,
-    // Which names are absent — for the admin diagnostics page. Never values.
+    // Which names are absent, for the admin diagnostics page. Never values.
     missing: [
       !apiKey ? "MELOSTORE_API_KEY" : null,
       !secretKey ? "MELOSTORE_SECRET" : null,
@@ -87,7 +87,7 @@ export function authorizeRequest({ method, payload } = {}) {
   return { headers };
 }
 
-/** Kept for the adapter's readiness check — see index.js `diagnostics()`. */
+/** Kept for the adapter's readiness check; see index.js `diagnostics()`. */
 export function signatureImplemented() {
   return true;
 }
@@ -98,7 +98,7 @@ export function signatureImplemented() {
  * Per the docs: HMAC-SHA256 over the RAW JSON payload, keyed by the account's
  * `webhook_secret`, hex-encoded, compared against `X-H2H-Signature`.
  *
- * The raw body string is used, never a re-serialised object — `JSON.stringify`
+ * The raw body string is used, never a re-serialised object: `JSON.stringify`
  * on a parsed body reorders and re-escapes, producing a different digest and
  * rejecting every genuine callback.
  *
@@ -109,7 +109,7 @@ export function verifyCallbackSignature({ headers, rawBody } = {}) {
   const { webhookSecret, webhookMissing } = loadAuthCredentials();
 
   if (webhookMissing.length) {
-    // Fail closed. An unverifiable callback must never be applied — a forged
+    // Fail closed. An unverifiable callback must never be applied: a forged
     // one delivers goods for free, while a refused genuine one is recoverable
     // by the reconciliation job.
     return {

@@ -1,5 +1,5 @@
 // ============================================================================
-// Admin catalogue service — price, SKU, and stock management.
+// Admin catalogue service, price, SKU, and stock management.
 //
 // WHY THIS IS A SEPARATE FILE FROM catalog.service.js
 //
@@ -18,7 +18,7 @@
 //    null or negative value would corrupt `total` arithmetic downstream.
 //
 // 2. Every mutation is audited with the BEFORE and AFTER values. A price change
-//    is a financial event — "someone changed it" is not enough, we need what
+//    is a financial event. "Someone changed it" is not enough, we need what
 //    it was and what it became.
 //
 // 3. A variant that has ever been ordered is never hard-deleted. It is the row
@@ -28,7 +28,7 @@
 //
 // ── WHY THE SKU SWAP EXISTS ─────────────────────────────────────────────────
 //
-// The provider lists the same delivered amount under several SKU codes —
+// The provider lists the same delivered amount under several SKU codes:
 // different server families, different supplier tiers. One can go
 // `out_of_stock` while another for the same nominal is still `active`. Without
 // a swap, the variant goes dead and the operator's only remedy is a full
@@ -53,7 +53,7 @@ const PROVIDER_CODE = "melostore";
 /**
  * A short-lived cache of the provider pricelist.
  *
- * The pricelist is ~21 paginated requests at 20 req/min — a full fetch takes
+ * The pricelist is ~21 paginated requests at 20 req/min; a full fetch takes
  * over a minute and spends a large chunk of the provider's rate budget. An
  * operator opening the SKU picker and clicking a candidate would otherwise
  * re-walk the whole list twice, and the third click would 429.
@@ -68,7 +68,7 @@ let pricelistCache = null;
 let pricelistCacheAt = 0;
 
 /**
- * Whether a selling price is at or below cost — a guaranteed loss per sale.
+ * Whether a selling price is at or below cost, a guaranteed loss per sale.
  * Reported as a warning, never blocked: a loss leader is a legitimate decision,
  * but it must not be silent.
  */
@@ -231,7 +231,7 @@ function brandNamesForGame(gameSlug) {
  * Case/whitespace/punctuation-insensitive name comparison key.
  *
  * Matching names, not SKUs, is what makes the candidate list work across the
- * provider's SKU families — and the names are NOT clean. The provider labels
+ * provider's SKU families, and the names are NOT clean. The provider labels
  * the same nominal "5 Diamonds", "5 Diamond", and "100 Diamond (91 + 9 Bonus)".
  * So comparison is on the LEADING DENOMINATION only: strip the parenthesised
  * bonus clause, drop the plural, and compare the number and the unit.
@@ -241,12 +241,12 @@ function brandNamesForGame(gameSlug) {
  * separator (`2.906 Diamonds`) which would otherwise never equal our variant
  * name written the same way.
  *
- * Exported because the unit tests lock the matching rules down — a normaliser
+ * Exported because the unit tests lock the matching rules down; a normaliser
  * that silently drifted would link a variant to the wrong nominal's SKUs.
  */
 export function normaliseName(name) {
   const text = String(name ?? "")
-    // Drop the "(91 + 9 Bonus)" clause — the bonus varies per supplier, and a
+    // Drop the "(91 + 9 Bonus)" clause. The bonus varies per supplier, and a
     // bonus tier is still the same nominal the customer is buying.
     .replace(/\([^)]*\)/g, " ")
     // Drop a trailing bonus phrase with no parentheses ("+ 167 Bonus").
@@ -341,7 +341,7 @@ export async function updateVariantPrice({ variantId, sellingPrice, actor, reque
  *
  * The target must exist on the provider AND be buyable right now. Accepting an
  * out-of-stock code would "succeed" and leave the variant exactly as dead as
- * it was — the failure would be invisible until a customer complained.
+ * it was, and the failure would be invisible until a customer complained.
  *
  * @param {{ variantId: string, providerCode: string, actor: object, request?: object }}
  * @returns {Promise<object>} the old/new SKU and the refreshed prices
@@ -359,7 +359,12 @@ export async function reassignVariantSku({ variantId, providerCode, actor, reque
       name: true,
       costPrice: true,
       sellingPrice: true,
-      product: { select: { name: true, game: { select: { name: true, slug: true } } } },
+      product: {
+        select: {
+          name: true,
+          game: { select: { name: true, slug: true, category: { select: { kind: true } } } },
+        },
+      },
       providerProducts: {
         select: {
           id: true,
@@ -403,13 +408,15 @@ export async function reassignVariantSku({ variantId, providerCode, actor, reque
 
   const result = await prisma.$transaction(
     async (tx) => {
+      // Airtime is priced with a fixed spread, not a percentage; see pricing.js.
+      const kind = variant.product?.game?.category?.kind ?? undefined;
       const isPinned =
-        Number(variant.sellingPrice) !== sellingPriceFromCost(variant.costPrice);
-      const derived = sellingPriceFromCost(target.price);
+        Number(variant.sellingPrice) !== sellingPriceFromCost(variant.costPrice, { kind });
+      const derived = sellingPriceFromCost(target.price, { kind });
 
       // @@unique([providerId, productVariantId]) allows ONE mapping row per
       // variant per provider: update in place rather than insert a second.
-      // Re-pointing is an operator decision — this is the case the sync
+      // Re-pointing is an operator decision; this is the case the sync
       // service deliberately refuses to do on its own.
       if (current) {
         await tx.providerProduct.update({
@@ -439,7 +446,7 @@ export async function reassignVariantSku({ variantId, providerCode, actor, reque
       }
 
       // Cost always follows the SKU we are now buying. Selling price follows
-      // only when the operator has not pinned one — the same rule as the sync.
+      // only when the operator has not pinned one, the same rule as the sync.
       const variantData = { costPrice: target.price };
       if (!isPinned) variantData.sellingPrice = derived;
 
@@ -489,7 +496,7 @@ export async function reassignVariantSku({ variantId, providerCode, actor, reque
  * Delete a variant, or a whole product with its variants.
  *
  * "Delete" means: stop it being offered. A variant that has ever been ordered
- * CANNOT be hard-deleted — it is the row an order item points at, and removing
+ * CANNOT be hard-deleted. It is the row an order item points at, and removing
  * it orphans the customer's transaction history. Those are deactivated instead,
  * which is the same outcome for the storefront without the data loss.
  *
@@ -664,7 +671,7 @@ export async function getVariantSkuStatus({ variantId, log = null }) {
     linkedSku: linkedCode,
     linkedAvailable,
     candidates,
-    /** Alternates that are in stock right now — empty means no swap possible. */
+    /** Alternates that are in stock right now, empty means no swap possible. */
     inStockAlternates: candidates.filter((c) => c.available && c.providerCode !== linkedCode),
   };
 }

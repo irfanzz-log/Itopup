@@ -1,5 +1,5 @@
 // ============================================================================
-// PATCH /api/member/profile — update your own name/phone.
+// PATCH /api/member/profile, update your own name/phone.
 //
 // The user id comes from the SESSION, never from the body: a member cannot
 // change somebody else's profile by editing a field. `.strict()` on

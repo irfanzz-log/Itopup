@@ -6,7 +6,7 @@
 //
 // NOTE ON SETUP: tests/setup.js TRUNCATEs every public table in beforeAll, so the
 // catalogue is empty when a test starts. This test therefore re-seeds it (by
-// spawning prisma/seed.js, which owns the catalogue definition) before syncing —
+// spawning prisma/seed.js, which owns the catalogue definition) before syncing,
 // without that, every SKU is "unmatched" simply because there is no variant to
 // link it to, which looks like a mapping bug and is not one.
 import { describe, it, expect } from "vitest";
@@ -79,7 +79,7 @@ describe("melostore sync (live)", () => {
       );
     }
 
-    // The link count must equal the number of byProviderCode rules — each rule
+    // The link count must equal the number of byProviderCode rules, each rule
     // names one SKU, and a rule that produced no row would mean the sync
     // silently dropped it.
     const ruleCount = Object.keys(PROVIDER_MAPPING.byProviderCode).length;

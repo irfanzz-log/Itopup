@@ -1,5 +1,5 @@
 // ============================================================================
-// /topup/[category] — one category (game / pulsa).
+// /topup/[category], one category (game / pulsa).
 //
 // A dynamic segment rather than two near-identical files: the layout, the
 // breadcrumb, and the metadata are identical, and only the label differs. The
@@ -12,9 +12,9 @@
 // ============================================================================
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { GameCard, SectionHeading } from "@/components/catalog/CatalogCards";
+import { EntryCard, SectionHeading } from "@/components/catalog/CatalogCards";
 import { EmptyState } from "@/components/ui/primitives";
-import { listGamesByCategory, resolveCategoryKind } from "@/services/catalog.service";
+import { listEntriesForCategory, resolveCategoryKind } from "@/services/catalog.service.js";
 import { CATEGORY_KIND_LABEL } from "@/lib/constants";
 
 export const dynamic = "force-dynamic";
@@ -51,7 +51,7 @@ export default async function CategoryPage({ params }) {
 
   if (!VALID_SEGMENTS.includes(category)) notFound();
 
-  const { category: dbCategory, games } = await listGamesByCategory(category);
+  const { category: dbCategory, entries } = await listEntriesForCategory(category);
 
   if (!dbCategory) notFound();
 
@@ -78,7 +78,7 @@ export default async function CategoryPage({ params }) {
         ) : null}
       </header>
 
-      {games.length === 0 ? (
+      {entries.length === 0 ? (
         <EmptyState
           icon="box"
           title="Produk sedang tidak tersedia"
@@ -89,8 +89,8 @@ export default async function CategoryPage({ params }) {
         <section>
           <SectionHeading title={`Semua layanan ${label}`} />
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-            {games.map((game) => (
-              <GameCard key={game.id} game={game} categoryPath={category} />
+            {entries.map((entry) => (
+              <EntryCard key={entry.id} entry={entry} />
             ))}
           </div>
         </section>

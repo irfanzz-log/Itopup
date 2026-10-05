@@ -1,5 +1,5 @@
 // ============================================================================
-// /dev/providers — provider status, balance and catalogue synchronisation.
+// /dev/providers, provider status, balance and catalogue synchronisation.
 //
 // This is the page that answers "why can't I sell anything": an unconfigured
 // provider, an expired balance, a stale sync, or products with no mapping. Each

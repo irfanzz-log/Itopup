@@ -1,5 +1,5 @@
 // ============================================================================
-// /dev/members/[id] — member detail.
+// /dev/members/[id], member detail.
 //
 // Shows the same information support needs: spend, order history, block
 // history, and the actions an operator can take. Block/reset are
@@ -120,7 +120,7 @@ export default async function DevMemberDetailPage({ params }) {
                   ) : null}
                   <p className="mt-0.5 text-[11px] text-foreground-subtle">
                     {block.blockedAt ? formatDateTime(block.blockedAt) : "—"}
-                    {block.unblockedAt ? ` — dibuka ${formatDateTime(block.unblockedAt)}` : ""}
+                    {block.unblockedAt ? ` (dibuka ${formatDateTime(block.unblockedAt)})` : ""}
                   </p>
                 </div>
               </li>

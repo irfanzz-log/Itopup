@@ -7,7 +7,7 @@
 // successful registration the form redirects to /login with the intended
 // destination preserved, so the checkout state is not lost.
 //
-// The password field carries a live strength hint. It is UX only — the server
+// The password field carries a live strength hint. It is UX only, the server
 // re-validates with assessPasswordStrength() and is the authority.
 // ============================================================================
 import { useState } from "react";
@@ -36,6 +36,13 @@ export default function RegisterForm() {
   const [formError, setFormError] = useState(null);
   const [pending, setPending] = useState(false);
 
+  // Two-step flow: the API sends a code first, the account is created only when
+  // the code is confirmed. Keeping both steps in one component preserves the
+  // form state the user already typed if they navigate back.
+  const [step, setStep] = useState("form");
+  const [code, setCode] = useState("");
+  const [resendIn, setResendIn] = useState(0);
+
   const hint = strengthHint(values.password);
 
   function update(field) {
@@ -52,6 +59,16 @@ export default function RegisterForm() {
       if (issue?.field && !mapped[issue.field]) mapped[issue.field] = issue.message;
     }
     setErrors(mapped);
+  }
+
+  async function startCooldown(seconds) {
+    setResendIn(seconds);
+    // setInterval in a component would leak if the user navigates away mid-
+    // countdown; this loop checks a local flag and stops itself.
+    for (let i = 0; i < seconds; i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      setResendIn((current) => Math.max(0, current - 1));
+    }
   }
 
   async function onSubmit(event) {
@@ -72,14 +89,123 @@ export default function RegisterForm() {
 
     const result = await apiFetch("/api/auth/register", { method: "POST", body: payload });
 
+    setPending(false);
+
     if (!result.ok) {
-      setPending(false);
       setFormError(result.error.message);
       applyServerErrors(result.error.details);
       return;
     }
 
+    // The code was sent (or the address was unknown, which the API reports the
+    // same way). Move to the code step either way: revealing which addresses
+    // exist would turn this form into an enumeration oracle.
+    setStep("code");
+    setFormError(null);
+    setCode("");
+    startCooldown(60);
+  }
+
+  async function onVerify(event) {
+    event.preventDefault();
+    setPending(true);
+    setFormError(null);
+
+    const result = await apiFetch("/api/auth/register/verify", {
+      method: "POST",
+      body: { email: values.email, code },
+    });
+
+    setPending(false);
+
+    if (!result.ok) {
+      setFormError(result.error.message);
+      return;
+    }
+
     window.location.assign(`/login?next=${encodeURIComponent(nextPath)}&registered=1`);
+  }
+
+  async function onResend() {
+    setPending(true);
+    setFormError(null);
+
+    const result = await apiFetch("/api/auth/register", {
+      method: "POST",
+      body: {
+        name: values.name,
+        email: values.email,
+        password: values.password,
+        ...(values.phone.trim() ? { phone: values.phone.trim() } : {}),
+      },
+    });
+
+    setPending(false);
+
+    if (!result.ok) {
+      setFormError(result.error.message);
+      return;
+    }
+
+    startCooldown(60);
+  }
+
+  if (step === "code") {
+    return (
+      <form onSubmit={onVerify} className="space-y-5" noValidate>
+        {formError ? <Alert tone="danger">{formError}</Alert> : null}
+
+        <div>
+          <label htmlFor="code" className="label">Kode verifikasi</label>
+          <input
+            id="code" name="code" type="text" inputMode="numeric" autoComplete="one-time-code"
+            pattern="\d{6}" maxLength={6} required
+            value={code}
+            onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))}
+            className="field text-center text-lg tracking-[0.5em]"
+            placeholder="------"
+            autoFocus
+          />
+          <p className="hint">
+            Masukkan 6 angka yang dikirim ke <strong>{values.email}</strong>.
+          </p>
+        </div>
+
+        <button type="submit" disabled={pending} className="btn-primary w-full py-3">
+          {pending ? (
+            <>
+              <Spinner className="h-4 w-4" label="Memverifikasi" />
+              Memverifikasi…
+            </>
+          ) : (
+            "Verifikasi email"
+          )}
+        </button>
+
+        <div className="flex items-center justify-between text-sm">
+          <button
+            type="button"
+            disabled={resendIn > 0 || pending}
+            onClick={onResend}
+            className="font-semibold text-brand-600 hover:underline disabled:text-foreground-subtle disabled:no-underline dark:text-brand-400"
+          >
+            {resendIn > 0 ? `Kirim ulang (${resendIn}s)` : "Kirim ulang kode"}
+          </button>
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() => {
+              setStep("form");
+              setFormError(null);
+              setCode("");
+            }}
+            className="font-medium text-foreground-muted hover:underline"
+          >
+            Ganti email
+          </button>
+        </div>
+      </form>
+    );
   }
 
   return (
@@ -162,7 +288,7 @@ export default function RegisterForm() {
             Mendaftar…
           </>
         ) : (
-          "Daftar"
+          "Kirim kode verifikasi"
         )}
       </button>
 

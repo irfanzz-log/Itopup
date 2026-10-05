@@ -1,8 +1,8 @@
 // ============================================================================
-// POST /api/member/sessions/revoke — end every OTHER session.
+// POST /api/member/sessions/revoke, end every OTHER session.
 //
 // "Log me out everywhere else" is the standard response to a suspected account
-// compromise, and it is only useful if it keeps the current device signed in —
+// compromise, and it is only useful if it keeps the current device signed in,
 // otherwise the member locks themselves out of the tab they are using.
 // revokeOtherSessions() therefore excludes the caller's own session id.
 // ============================================================================

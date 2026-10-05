@@ -1,5 +1,5 @@
 // ============================================================================
-// Provider service — the boundary between the core app and any top-up provider.
+// Provider service, the boundary between the core app and any top-up provider.
 //
 // Nothing outside src/providers/ may import an adapter. Everything goes through
 // here, which gives three things in one place:
@@ -21,7 +21,7 @@ const VALIDATION_CACHE_MS = Number(process.env.VALIDATION_CACHE_MS || 10 * 60 * 
  * Translate a failed provider result into an AppError.
  *
  * `unknown: true` outcomes (timeout, unclassified) get a message that says the
- * status is being verified — NOT "failed". Telling a customer their top-up
+ * status is being verified, NOT "failed". Telling a customer their top-up
  * failed when it may have succeeded is what produces support tickets and
  * duplicate purchases.
  */
@@ -130,7 +130,7 @@ async function readValidationCache(key) {
     }
     return { valid: Boolean(value.valid), nickname: value.nickname ?? null, server: value.server ?? null };
   } catch {
-    // A cache failure must never break validation — fall through to the provider.
+    // A cache failure must never break validation. Fall through to the provider.
     return null;
   }
 }
@@ -199,7 +199,7 @@ export async function syncBalance() {
 
 /**
  * Diagnostics for /dev/providers. Reports configuration STATE and missing env
- * var NAMES — never a value, never a partial value.
+ * var NAMES, never a value, never a partial value.
  */
 export function providerDiagnostics() {
   return listTopupProviders().map((provider) => {

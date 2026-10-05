@@ -1,10 +1,10 @@
 // ============================================================================
 // Payment method catalogue.
 //
-// EVERY METHOD HERE IS SERVED BY MIDTRANS SNAP.
+// EVERY METHOD HERE IS SERVED BY MIDTRANS CORE API (/v2/charge).
 //
 // This was not always true. The catalogue used to carry a set of "offline"
-// methods — the customer transferred to a bank account or e-wallet number the
+// methods: the customer transferred to a bank account or e-wallet number the
 // operator owned, and a human confirmed the money arrived. Those are gone. The
 // reasons:
 //
@@ -15,11 +15,13 @@
 //   * The account numbers were secrets held in env, exposed to every customer
 //     who reached checkout.
 //
-// Midtrans owns the payment screen entirely. We create a Snap transaction, the
-// customer pays inside Midtrans, and Midtrans calls
-// POST /api/webhooks/payment/midtrans. That signature-verified callback is the
-// ONLY thing that settles an order; `settlePayment` then dispatches to
-// Melostore. No operator touches the money path.
+// Midtrans owns the payment instrument entirely. We POST a /v2/charge with the
+// payment_type the customer picked, Midtrans returns the VA number / QR string
+// / payment code in the response body, and we render it on our own order page.
+// Midtrans then calls POST /api/webhooks/payment/midtrans. That
+// signature-verified callback is the ONLY thing that settles an order;
+// `settlePayment` then dispatches to Melostore. No operator touches the money
+// path.
 //
 // WHAT THIS FILE STILL IS, AND IS NOT
 //
@@ -43,7 +45,7 @@ import { formatNumber } from "../lib/format.js";
  * Virtual account methods are offered only at or above this amount.
  *
  * WHY: a VA is a bank transfer, and a bank transfer of a few thousand rupiah is
- * not viable — the sending bank's own fee can exceed the transaction, and the
+ * not viable: the sending bank's own fee can exceed the transaction, and the
  * admin fee is larger than the top-up itself. Below this threshold the customer
  * is directed to QRIS instead, which is viable down to ~Rp 1.000.
  *
@@ -60,6 +62,15 @@ export const PAYMENT_METHODS = [
   // Listed FIRST because this is the method the customer lands on for a typical
   // top-up. QRIS is viable from ~Rp 1.000, so it is the method that covers
   // everything below the VA floor. Midtrans renders the QR; we never draw one.
+  //
+  // THE WALLET LIST BELOW IS THE E-WALLET OFFERING. Direct wallet charges
+  // (ewallet_gopay / ewallet_shopeepay) were removed: QRIS already accepts
+  // every one of these wallets, and the direct path had a channel-specific
+  // quirk (ShopeePay answers with a deeplink and no QR at all) that made its
+  // payment page render an empty panel for a charge that was live at the
+  // gateway. One QRIS method covers them all and renders identically
+  // everywhere, so the direct wallets were redundant surface area that could
+  // break per-wallet.
   {
     key: "qris",
     label: "QRIS (semua e-wallet & m-banking)",
@@ -70,17 +81,29 @@ export const PAYMENT_METHODS = [
     minAmount: 1000,
     maxAmount: 10_000_000,
     description: "Scan sekali dari aplikasi apa pun. Paling cepat untuk nominal kecil.",
+    /// Wallets a customer can scan the QRIS with. Shown as small logos under the
+    /// option so the customer recognises their own app, the whole reason they
+    /// used to pick a direct wallet. Order is display order, not priority.
+    supportedWallets: ["dana", "gopay", "ovo", "shopeepay"],
   },
 
-  // ── E-wallets (direct, not via QRIS) ─────────────────────────────────────
-  // A customer who wants to pay from a specific wallet balance can pick the
-  // wallet directly. Midtrans handles the deeplink/confirmation; this is still
-  // a gateway method — we hold no wallet number and reconcile nothing.
+  // ── E-wallets (direct, not via QRIS): REMOVED ───────────────────────────
+  // QRIS covers GoPay, ShopeePay, DANA and OVO from one QR, so a direct wallet
+  // charge added a second implementation of the same outcome. It also carried a
+  // per-channel trap: ShopeePay answers with only a deeplink-redirect action and
+  // no qr_string, so the direct path rendered an empty payment panel for a
+  // charge that was live at the gateway.
+  //
+  // The entries stay here as LEGACY, disabled: `paymentMethodLabel()` resolves a
+  // stored key through this table, and without these rows an order that paid via
+  // GoPay would print "Ewallet Gopay" instead of "GoPay" on its receipt. They
+  // are filtered out of checkout by `enabled: false` + `legacy: true`.
   {
     key: "ewallet_gopay",
     label: "GoPay",
     group: "E-Wallet",
-    enabled: true,
+    enabled: false,
+    legacy: true,
     feePercent: 0.7,
     feeFlat: 0,
     minAmount: 1000,
@@ -91,7 +114,8 @@ export const PAYMENT_METHODS = [
     key: "ewallet_shopeepay",
     label: "ShopeePay",
     group: "E-Wallet",
-    enabled: true,
+    enabled: false,
+    legacy: true,
     feePercent: 0.7,
     feeFlat: 0,
     minAmount: 1000,
@@ -103,7 +127,7 @@ export const PAYMENT_METHODS = [
   // A VA is the modern replacement for "transfer ke rekening BCA": Midtrans
   // generates a per-order account number, the customer transfers to it from
   // their own banking app, and settlement is automatic. The 100k floor from the
-  // old manual bank methods carries over — see BANK_MIN_AMOUNT.
+  // old manual bank methods carries over; see BANK_MIN_AMOUNT.
   {
     key: "va_bca",
     label: "BCA Virtual Account",
@@ -160,12 +184,16 @@ export const PAYMENT_METHODS = [
     description: `Transfer ke nomor VA Permata, khusus transaksi di atas Rp ${formatNumber(BANK_MIN_AMOUNT)}.`,
   },
 
-  // ── Card (Midtrans must also enable the acquirer in the merchant dashboard) ─
+  // ── Card: NOT OFFERED ────────────────────────────────────────────────────
+  // Server-side card charging is impossible without browser tokenisation, which
+  // this app does not implement, so the option could never complete a payment.
+  // Kept resolvable as legacy so historical orders still print their label.
   {
     key: "card_credit",
     label: "Kartu Kredit",
     group: "Kartu",
-    enabled: true,
+    enabled: false,
+    legacy: true,
     feePercent: 2.9,
     feeFlat: 0,
     minAmount: 1000,
@@ -173,12 +201,16 @@ export const PAYMENT_METHODS = [
     description: "Visa / Mastercard / JCB melalui Midtrans.",
   },
 
-  // ── Retail outlets: cash, for the unbanked ───────────────────────────────
+  // ── Retail outlets: NOT OFFERED ──────────────────────────────────────────
+  // Cash-over-the-counter settlement is slow and adds a fee tier that made more
+  // sense for the unbanked audience this app no longer targets; QRIS covers the
+  // small amounts retail was for. Kept as legacy so past orders still reconcile.
   {
     key: "retail_alfamart",
     label: "Alfamart",
     group: "Gerai Retail",
-    enabled: true,
+    enabled: false,
+    legacy: true,
     feeFlat: 5000,
     feePercent: 0,
     minAmount: 10_000,
@@ -189,7 +221,8 @@ export const PAYMENT_METHODS = [
     key: "retail_indomaret",
     label: "Indomaret",
     group: "Gerai Retail",
-    enabled: true,
+    enabled: false,
+    legacy: true,
     feeFlat: 5000,
     feePercent: 0,
     minAmount: 10_000,
@@ -200,7 +233,7 @@ export const PAYMENT_METHODS = [
   // ── Legacy aliases: resolvable, never offered ────────────────────────────
   // `manual_transfer` and the per-bank / per-wallet offline keys were the only
   // methods before Midtrans. Orders already in the database reference them, and
-  // re-issuing instructions for such an order must keep working — deleting a key
+  // re-issuing instructions for such an order must keep working; deleting a key
   // would make `getPaymentMethod` return null and strand those orders.
   //
   // `legacy: true` keeps them resolvable while excluding them from the checkout
@@ -362,7 +395,7 @@ export function paymentMethodLabel(key) {
  *
  * `legacy` keys are excluded: they stay resolvable so historical orders can be
  * re-issued, but they are not choices in a new checkout. Necessary, but not
- * sufficient — see `availablePaymentMethods()` in payment.server.js.
+ * sufficient; see `availablePaymentMethods()` in payment.server.js.
  */
 export function enabledPaymentMethods() {
   return PAYMENT_METHODS.filter((m) => m.enabled && !m.legacy);
@@ -372,14 +405,14 @@ export function enabledPaymentMethods() {
  * Narrow the servable list to what makes sense for ONE purchase.
  *
  * THE VA RULE LIVES HERE. A virtual account is hidden when the purchase is
- * below BANK_MIN_AMOUNT, because a small bank transfer is not viable — the fee
+ * below BANK_MIN_AMOUNT, because a small bank transfer is not viable: the fee
  * eats the transaction. QRIS is what the customer gets instead, and QRIS has no
  * such floor. This is the SAME predicate the server enforces in
  * `checkMethodEligibility()`, so a VA can never be offered here and then
  * refused at order creation.
  *
  * NOT DONE HERE: restricting an e-wallet method to a matching wallet. A payment
- * method is an instrument, not a product — paying for diamonds from a GoPay
+ * method is an instrument, not a product; paying for diamonds from a GoPay
  * balance is a normal transaction. Midtrans owns the payment screen and the
  * customer may switch channel there anyway; refusing the channel they picked
  * here would only block a willing payer.

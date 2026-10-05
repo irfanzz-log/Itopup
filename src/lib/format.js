@@ -2,7 +2,7 @@
 // Formatting helpers. Used by BOTH server and client components, so nothing
 // here may import a server-only module or read a secret.
 //
-// ⚠️  DETERMINISTIC BY CONSTRUCTION — do not reintroduce Intl currency
+// ⚠️  DETERMINISTIC BY CONSTRUCTION: do not reintroduce Intl currency
 //
 // These functions used to call `Intl.NumberFormat("id-ID", { style: "currency",
 // currency: "IDR" })`. That rendered "Rp 1.600" on the server and "Rp1.600" in
@@ -12,7 +12,7 @@
 //
 // React compares the server HTML against the client render and, on a mismatch,
 // throws "Hydration failed because the server rendered text didn't match the
-// client" and regenerates the whole tree — which is exactly what happened on the
+// client" and regenerates the whole tree, which is exactly what happened on the
 // nominal buttons of /topup/*.
 //
 // The fix is NOT a `suppressHydrationWarning` band-aid: that hides the symptom
@@ -22,21 +22,21 @@
 //
 // The same reasoning applies to the date formatters below: they still use Intl
 // (a real calendar needs locale data) but pin `timeZone: "Asia/Jakarta"`, so the
-// server and the client — which may run in different timezones — agree.
+// server and the client, which may run in different timezones, agree.
 // ============================================================================
 
 /**
- * Group a number with "." every three digits and "," before the decimals — the
+ * Group a number with "." every three digits and "," before the decimals: the
  * Indonesian convention ("1.234.567,89").
  *
  * Deliberately NOT `Intl.NumberFormat`: see the file header. Handles a decimal
- * part so a percentage like 0.7% renders as "0,7%" and not as a truncated "0" —
+ * part so a percentage like 0.7% renders as "0,7%" and not as a truncated "0".
  * silently dropping the fraction of a fee is the kind of error a customer only
  * notices on their bank statement.
  */
 function groupThousands(value) {
   // Reject empty input BEFORE Number(): `Number(null)` and `Number("")` are both
-  // 0, so a missing amount used to render as a perfectly legitimate "Rp 0" —
+  // 0, so a missing amount used to render as a perfectly legitimate "Rp 0".
   // worse than "Rp NaN", because a customer reads it as a free order. Only a
   // real number (or a non-empty numeric string) may produce digits.
   if (value === null || value === undefined || value === "") return null;
@@ -67,14 +67,14 @@ const DATE_ONLY = new Intl.DateTimeFormat("id-ID", {
   timeZone: "Asia/Jakarta",
 });
 
-/** "Rp 22.000" — identical on server and client. */
+/** "Rp 22.000": identical on server and client. */
 export function formatIDR(value) {
   const grouped = groupThousands(value);
   if (grouped === null) return "-";
   return `Rp ${grouped}`;
 }
 
-/** "22.000" — for inputs and tables where the Rp prefix is in the header. */
+/** "22.000": for inputs and tables where the Rp prefix is in the header. */
 export function formatNumber(value) {
   const grouped = groupThousands(value);
   return grouped === null ? "-" : grouped;
@@ -95,7 +95,7 @@ export function formatDate(value) {
 }
 
 /**
- * "3 menit lalu" — relative, for order lists.
+ * "3 menit lalu": relative, for order lists.
  *
  * Takes `now` explicitly rather than reading the clock itself, so a caller can
  * pass a server-derived timestamp and both renders agree.

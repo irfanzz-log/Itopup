@@ -1,11 +1,11 @@
 // ============================================================================
-// Manual / offline transfer — environment loaders.
+// Manual / offline transfer: environment loaders.
 //
 // WHY THIS FILE IS SERVER-ONLY
 //
 // It reads secrets: bank account numbers and e-wallet numbers from the
 // environment. Those must never reach a client bundle, so this module imports
-// the `server-only` guard — importing it from a client component is a build
+// the `server-only` guard; importing it from a client component is a build
 // error, not a warning. Before this guard the chain
 //   config/payment.js → providers/payment/index.js → manual/index.js
 //   → client.js → env.server.js → env.js
@@ -69,7 +69,7 @@ export function loadAllDestinations() {
  * Adapter-wide `isConfigured()` answers a different question ("can this adapter
  * take any payment at all"). Offering a bank transfer when only an e-wallet
  * number is configured passes that check and then hands the customer
- * instructions they cannot follow — so per-method servability is asked
+ * instructions they cannot follow, so per-method servability is asked
  * separately, and the reason names the missing channel.
  */
 export function isMethodConfigured(method) {

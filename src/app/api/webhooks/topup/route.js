@@ -1,5 +1,5 @@
 // ============================================================================
-// POST /api/webhooks/topup — inbound provider callback.
+// POST /api/webhooks/topup, inbound provider callback.
 //
 // THE ORDER OF OPERATIONS IS THE SECURITY CONTROL:
 //   1. read the RAW body (re-serialising changes bytes and breaks the HMAC),
@@ -10,7 +10,7 @@
 // A callback parsed before it is verified is a spoofing vector: anyone who
 // learns the URL can POST {"status":"SUCCESS"} and have goods delivered.
 //
-// This endpoint is NOT CSRF-guarded and NOT session-guarded — it is
+// This endpoint is NOT CSRF-guarded and NOT session-guarded, it is
 // machine-to-machine. Its authentication is the signature, which is why the
 // signature check must fail closed. Today the Melostore adapter's signature
 // module has no algorithm implemented (documentation pending), so every
@@ -36,7 +36,7 @@ const MAX_CALLBACK_BYTES = 64 * 1024;
 export const POST = route(async (req, _ctx, { log, rid }) => {
   const ip = clientIp(req);
 
-  // Flood protection only — the signature is the real authentication. Fails
+  // Flood protection only, the signature is the real authentication. Fails
   // open, because dropping a provider retry loses money.
   await enforce([["webhook:topup", presets.webhook]]);
 

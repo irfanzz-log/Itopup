@@ -1,5 +1,5 @@
 // ============================================================================
-// Auth shell — shared chrome for /login and /register.
+// Auth shell, shared chrome for /login and /register.
 //
 // A two-column layout on desktop (form + trust panel) and a single column on
 // mobile. The panel is static marketing copy, so it costs nothing and gives the

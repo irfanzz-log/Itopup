@@ -1,5 +1,5 @@
 // ============================================================================
-// Checkout idempotency key — derived from the payload, never from a random seed.
+// Checkout idempotency key: derived from the payload, never from a random seed.
 //
 // THE BUG THIS EXISTS TO KILL
 //
@@ -49,7 +49,7 @@ export function canonicalCheckoutPayload({ variantId, fields, promoCode, payment
   return JSON.stringify({
     variantId: variantId ?? null,
     fields: sortedFields,
-    // Trimmed BEFORE the emptiness test, so "   " is treated as absent — the same
+    // Trimmed BEFORE the emptiness test, so "   " is treated as absent, the same
     // way the server's `promoCode ? ... : null` treats it after zod's trim().
     promoCode: String(promoCode ?? "").trim() ? String(promoCode).trim().toUpperCase() : null,
     paymentMethod: paymentMethod ?? null,
@@ -60,7 +60,7 @@ export function canonicalCheckoutPayload({ variantId, fields, promoCode, payment
  * 32-bit FNV-1a, hex-encoded.
  *
  * A non-cryptographic hash is correct here: this is a cache/dedupe key, not a
- * security token. The server never trusts it as proof of anything — it only
+ * security token. The server never trusts it as proof of anything; it only
  * compares the payload hash it computes itself.
  */
 function fnv1aHex(text) {
@@ -87,7 +87,7 @@ export function deriveIdempotencyKey(input) {
 
   // Four independently-salted passes. One 32-bit hash has a birthday collision
   // probability that is small but not zero, and a collision here would silently
-  // hand one customer another customer's order — so widen the digest.
+  // hand one customer another customer's order, so widen the digest.
   const digest = [0, 1, 2, 3].map((salt) => fnv1aHex(`${salt}:${canonical}`)).join("");
   return `itp_${digest}`;
 }

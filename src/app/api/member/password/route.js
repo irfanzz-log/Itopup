@@ -1,11 +1,11 @@
 // ============================================================================
-// POST /api/member/password — change your own password.
+// POST /api/member/password, change your own password.
 //
 // Rate limited with the auth preset (per user AND per IP, fail-closed): this
 // endpoint verifies a password, so it is a brute-force target even though the
 // attacker must already hold a session.
 //
-// The service invalidates every session in the same transaction — the current
+// The service invalidates every session in the same transaction, the current
 // one included. The client therefore follows a 200 with a full navigation to
 // /login, not a router.refresh(), because the cookie it still holds is dead.
 // ============================================================================

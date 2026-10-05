@@ -1,9 +1,9 @@
 // ============================================================================
-// Melostore mapper — verified against the payloads printed in the official
+// Melostore mapper, verified against the payloads printed in the official
 // documentation (h2h.melostore.id/id/docs).
 //
 // Every fixture below is COPIED FROM THE DOCS, not invented. If Melostore
-// changes a field name, these tests fail — which is the point: the mapping is
+// changes a field name, these tests fail, which is the point: the mapping is
 // the one thing that must never silently drift.
 // ============================================================================
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
@@ -82,7 +82,7 @@ describe("mapFieldsToProvider", () => {
 
 describe("buildOrderPayload", () => {
   // `sandbox_mode` is only added when MELOSTORE_SANDBOX is explicitly "true" or
-  // "false". Left unset, the payload must NOT carry the key at all — the sandbox
+  // "false". Left unset, the payload must NOT carry the key at all, the sandbox
   // flag is an account-level setting, and sending it unasked would let a local
   // .env silently point a production call at the sandbox.
   const originalSandbox = process.env.MELOSTORE_SANDBOX;
@@ -99,7 +99,7 @@ describe("buildOrderPayload", () => {
   it("matches the documented POST /transaction body exactly", () => {
     // Docs example:
     //   { sku_code, customer_target, customer_target_zone, buyer_trx_id, sandbox_mode }
-    // sandbox_mode is omitted here because it is optional and not configured —
+    // sandbox_mode is omitted here because it is optional and not configured,
     // the assertion below is the "unset" case.
     const payload = buildOrderPayload({
       idempotencyKey: "unique_tx_ref_001",
@@ -401,7 +401,7 @@ describe("mapperStatus", () => {
 //
 // This is the regression guard for a real bug: the catalogue can grow a game
 // (a new e-wallet, an operator) while PRIMARY_TARGET_FIELD does not, and the
-// mapper then falls back to `userId` — throwing "Field userId wajib diisi" at
+// mapper then falls back to `userId`, throwing "Field userId wajib diisi" at
 // checkout, or worse, dispatching a payload with the wrong target slot. A test
 // that only exercises slugs the mapper already knows can never catch that, so
 // these iterate the CATALOGUE and require the mapper to cover it.
@@ -415,7 +415,7 @@ describe("catalogue ↔ mapper contract", () => {
 
     // PRIMARY_TARGET_FIELD is required for DISPATCH, so it must cover the whole
     // catalogue. A missing entry falls back to `userId` and either throws at
-    // checkout or — worse — sends a payload with the wrong target slot.
+    // checkout or, worse, sends a payload with the wrong target slot.
     const missing = GAME_SEED.map((g) => g.slug).filter(
       (slug) => !PRIMARY_TARGET_FIELD[slug]
     );
@@ -444,7 +444,7 @@ describe("catalogue ↔ mapper contract", () => {
     const { GAME_MAP } = await import("../../src/providers/melostore/mapper.js");
 
     // GAME_MAP is only used by the check-nickname path, so it is required
-    // exactly for the games that advertise validation — not for every catalogue
+    // exactly for the games that advertise validation, not for every catalogue
     // entry. A game may be dispatchable while its game_code stays unverified.
     const missing = GAME_SEED.filter((g) => g.supportsValidation)
       .map((g) => g.slug)
@@ -458,6 +458,10 @@ describe("catalogue ↔ mapper contract", () => {
 
     // Build a plausible value per declared field key, so the test never depends
     // on a hardcoded sample that could drift from the field contract.
+    //
+    // A secret field is sampled too: `mapFieldsToProvider` places it in the
+    // zone slot for the game that declares it, and this test must exercise that
+    // path rather than skipping it.
     const SAMPLE = {
       userId: "123456789",
       zoneId: "1234",
@@ -466,13 +470,15 @@ describe("catalogue ↔ mapper contract", () => {
       username: "someuser",
       phoneNumber: "081234567890",
       region: "ID",
+      gameLogin: "player@example.com",
+      gamePassword: "hunter2-efootball",
     };
 
     for (const game of GAME_SEED) {
       const fields = {};
       for (const def of game.inputFields) fields[def.key] = SAMPLE[def.key];
 
-      // No game in the catalogue may declare a field we cannot sample — that
+      // No game in the catalogue may declare a field we cannot sample, that
       // would make this test silently vacuous for that game.
       expect(Object.values(fields)).not.toContain(undefined);
 

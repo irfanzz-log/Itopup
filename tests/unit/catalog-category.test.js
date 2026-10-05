@@ -1,12 +1,12 @@
 // ============================================================================
-// Category resolution — the catalogue has exactly two kinds.
+// Category resolution, the catalogue has exactly two kinds.
 //
 // THE CHANGE THESE TESTS LOCK DOWN
 //
 // The E_WALLET catalogue (DANA / OVO / GoPay / ShopeePay) was removed: the
 // seed config no longer lists it, the routes no longer accept the segment, and
 // the DB rows are gone. `resolveCategoryKind` is the boundary between a URL a
-// customer may type and a Prisma query — it must resolve only what exists, and
+// customer may type and a Prisma query, it must resolve only what exists, and
 // return null for everything else so the caller 404s rather than silently
 // defaulting to GAME (which would make /topup/e-wallet render the game list
 // and look like a bug rather than a 404).
@@ -42,7 +42,7 @@ describe("resolveCategoryKind", () => {
   });
 
   it("refuses empty and nonsense input instead of defaulting to game", () => {
-    // Defaulting would make any typo render the game list — the customer thinks
+    // Defaulting would make any typo render the game list, the customer thinks
     // the category exists and something is merely broken.
     expect(resolveCategoryKind(null)).toBe(null);
     expect(resolveCategoryKind("")).toBe(null);

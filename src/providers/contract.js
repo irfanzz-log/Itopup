@@ -2,7 +2,7 @@
 // Provider contract.
 //
 // The core app knows ONLY the shapes in this file. No page, service, or route
-// handler may import a concrete adapter — they call the registry in
+// handler may import a concrete adapter; they call the registry in
 // src/providers/index.js and receive something that satisfies this contract.
 //
 // WHY a result envelope instead of throwing everywhere:
@@ -12,14 +12,14 @@
 //   * a DEFINITE failure      → { ok: false, error: { code, retryable: false } }
 //   * an UNKNOWN outcome      → { ok: false, error: { code: TIMEOUT, retryable: false,
 //                                unknown: true } }
-// A timeout is NOT a failure — the order may well have been placed. Collapsing
+// A timeout is NOT a failure: the order may well have been placed. Collapsing
 // that into a thrown error is exactly how a duplicate top-up gets delivered.
 // The envelope forces the caller to decide explicitly.
 // ============================================================================
 
 /** Machine-readable provider error codes. Mapped to ITP_* codes at the boundary. */
 export const PROVIDER_ERROR = {
-  /** No response within the deadline. Outcome UNKNOWN — must be reconciled. */
+  /** No response within the deadline. Outcome UNKNOWN: must be reconciled. */
   TIMEOUT: "TIMEOUT",
   /** Provider returned an error response. Outcome known to be negative. */
   REJECTED: "REJECTED",
@@ -31,7 +31,7 @@ export const PROVIDER_ERROR = {
   INVALID_ACCOUNT: "INVALID_ACCOUNT",
   /** The requested SKU is not purchasable right now. */
   PRODUCT_UNAVAILABLE: "PRODUCT_UNAVAILABLE",
-  /** The provider already has this order reference — treat as success, do not resend. */
+  /** The provider already has this order reference: treat as success, do not resend. */
   DUPLICATE: "DUPLICATE",
   /** Provider accepted the order and will process it asynchronously. */
   PENDING: "PENDING",
@@ -89,7 +89,7 @@ export function providerErr(code, message, meta = {}) {
 /**
  * The interface every top-up adapter must implement.
  *
- * Documented rather than declared in code because this is plain JavaScript —
+ * Documented rather than declared in code because this is plain JavaScript:
  * treat this object as the spec, and `assertTopupProvider` as the runtime check.
  *
  * @typedef {Object} TopupProvider
@@ -100,27 +100,27 @@ export function providerErr(code, message, meta = {}) {
  * @property {() => { missing: string[] }} configurationGaps
  *
  * @property {(input: { category?: string }) => Promise<ProviderResult<NormalizedProduct[]>>}
- *   getProducts — the provider's catalogue, used by the sync service. Never
+ *   getProducts: the provider's catalogue, used by the sync service. Never
  *   called from a request path: the sync job writes results into the database
  *   and the UI reads the database.
  *
  * @property {(input: { gameSlug: string, fields: Record<string,string> }) => Promise<ProviderResult<NormalizedAccount>>}
- *   validateAccount — returns whether the supplied player id exists. The
+ *   validateAccount: returns whether the supplied player id exists. The
  *   provider is the ONLY authority on this; the frontend never decides.
  *
  * @property {(input: NormalizedOrderRequest) => Promise<ProviderResult<NormalizedOrderResult>>}
- *   createOrder — dispatch a purchase. MUST be idempotent from our side: the
+ *   createOrder: dispatch a purchase. MUST be idempotent from our side: the
  *   adapter receives `idempotencyKey` and must send it as the provider's own
  *   reference where the provider supports one.
  *
  * @property {(input: { providerRef?: string, providerOrderId?: string }) => Promise<ProviderResult<NormalizedOrderStatus>>}
- *   getOrderStatus — reconciliation.
+ *   getOrderStatus: reconciliation.
  *
  * @property {() => Promise<ProviderResult<{ balance: number, currency: string, raw?: unknown }>>}
  *   getBalance
  *
  * @property {(input: { headers: Headers, body: unknown, rawBody: string }) => Promise<ProviderResult<NormalizedCallback>>}
- *   parseCallback — verify + normalise an inbound callback. MUST verify the
+ *   parseCallback: verify + normalise an inbound callback. MUST verify the
  *   signature before returning ok:true; an unverified callback is a spoof.
  */
 
@@ -130,7 +130,7 @@ export function providerErr(code, message, meta = {}) {
 
 /**
  * Internal, provider-agnostic purchase request. The adapter's mapper converts
- * this into whatever the provider wants — that conversion is the ONLY place
+ * this into whatever the provider wants; that conversion is the ONLY place
  * provider-specific parameter names may appear.
  *
  * @typedef {Object} NormalizedOrderRequest

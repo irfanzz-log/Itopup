@@ -1,10 +1,10 @@
 // ============================================================================
-// /member/orders/[id] — order detail.
+// /member/orders/[id], order detail.
 //
 // OWNERSHIP IS ENFORCED BY THE QUERY, not by a comparison after the fetch:
 // getOrderForUser() filters on `{ id, userId }`, so somebody else's order is
 // indistinguishable from a nonexistent one (both 404). That is the IDOR
-// boundary — and it is why this page calls the service rather than Prisma
+// boundary, and it is why this page calls the service rather than Prisma
 // directly.
 //
 // `customerInput` is the customer's OWN data (their player id), so showing it
@@ -14,13 +14,14 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth/session.js";
-import { getOrderForUser } from "@/services/order.service.js";
+import { getOrderForUser, expireStaleOrders } from "@/services/order.service.js";
 import StatusBadge from "@/components/ui/StatusBadge";
 import { Alert } from "@/components/ui/primitives";
 import PaymentInstructions from "@/components/payment/PaymentInstructions";
+import DeadlineNote from "@/components/member/DeadlineNote";
 import { paymentMethodLabel } from "@/config/payment.js";
 import { formatIDR, formatDateTime } from "@/lib/format";
-import { ORDER_STATUS, PAYMENT_STATUS_LABEL } from "@/lib/constants";
+import { ORDER_STATUS, PAYMENT_STATUS, PAYMENT_STATUS_LABEL } from "@/lib/constants";
 
 export const dynamic = "force-dynamic";
 
@@ -29,11 +30,147 @@ export const metadata = {
   robots: { index: false, follow: false },
 };
 
+/**
+ * Ask the gateway whether this order was paid, BEFORE the expiry sweep runs.
+ *
+ * This is the single gateway call the page makes. It runs first because it is
+ * the only path that can discover a settlement the webhook has not delivered
+ * yet, and because a settled order must not be cancelled by the expiry sweep
+ * that follows it in `getOrderForUser`.
+ *
+ * Ownership is part of the lookup (the payment is fetched through the user's
+ * own order), so a stranger's order id answers "nothing to reconcile" rather
+ * than revealing that it exists.
+ *
+ * Every failure mode degrades to "render the row as-is": the webhook and the
+ * customer's own "Sudah dibayar?" button still cover it, and a gateway that is
+ * slow must not be a reason to make the customer wait or the page break.
+ *
+ * @returns {Promise<{settled: boolean}|null>} null when there was nothing to ask.
+ */
+async function reconcileOrderOnPageLoad({ orderId, userId }) {
+  const { prisma } = await import("@/lib/db.js");
+
+  // Look the order up THROUGH the user, so this is also the ownership check.
+  const order = await prisma.order.findFirst({
+    where: { id: orderId, userId },
+    select: { id: true, status: true, providerRef: true, providerOrderId: true,
+      provider: { select: { code: true } },
+      payment: { select: { id: true, status: true } } },
+  });
+  if (!order) return null;
+
+  // THE TWO QUESTIONS THIS PAGE MUST ASK.
+  //
+  // A pending PAYMENT asks Midtrans "did the money arrive?". A PROCESSING order
+  // asks the top-up provider "did the delivery succeed?". Both are reconcile
+  // calls, and previously only the first was made: once the gateway said PAID,
+  // this function returned null and the page rendered "Sedang diproses" while
+  // never polling the provider. The webhook was the ONLY remaining source of
+  // truth, and on localhost (or any host the provider cannot reach) it never
+  // fires, so the order sat in PROCESSING with providerStatus UNKNOWN until the
+  // 2-minute scheduler happened to run. The customer staring at the page saw a
+  // spinner that nothing was driving.
+  const askPayment = order.status === ORDER_STATUS.PENDING_PAYMENT ||
+    order.status === ORDER_STATUS.PAYMENT_PROCESSING;
+  const askProvider = order.status === ORDER_STATUS.PROCESSING && Boolean(order.providerRef);
+
+  if (!askPayment && !askProvider) return null;
+
+  // ── 1. Ask Midtrans whether the money arrived. ───────────────────────────
+  if (askPayment) {
+    // The broken-order case: the charge failed at checkout and no payment row was
+    // ever created. There is nothing to reconcile, and asking would throw.
+    if (!order.payment?.id) {
+      // No payment row, but the order may still be waiting on the provider,
+      // fall through to step 2 rather than abandoning the reconcile entirely.
+    } else if (order.payment.status !== PAYMENT_STATUS.PENDING) {
+      // A payment already at a terminal state is reconciled by definition; skip
+      // the gateway call but still fall through to step 2, because a PAID order
+      // is exactly the one whose top-up status we need. Returning here used to
+      // silence the provider poll entirely once the money landed.
+    } else {
+      try {
+        const { reconcilePayment } = await import("@/services/payment.service.js");
+        const result = await reconcilePayment({
+          paymentId: order.payment.id,
+          source: "PAGE_LOAD",
+          request: null,
+        });
+        if (result?.settled) return { settled: true };
+      } catch (err) {
+        console.error("order.page_reconcile_failed", {
+          orderId: order.id,
+          message: String(err?.message ?? err).slice(0, 200),
+        });
+      }
+    }
+  }
+
+  // ── 2. Ask the top-up provider whether the delivery arrived. ─────────────
+  // This is a real GET /transaction/{ref} call, then the result is handed to
+  // applyProviderStatus, the same sink the webhook writes through, so a
+  // poll-driven update and a genuine callback are indistinguishable to the
+  // state machine. A provider that still says "pending" changes nothing and
+  // costs one cheap call, which is what makes this safe to run on every load.
+  try {
+    const { getTopupProvider } = await import("@/providers/index.js");
+    const provider = getTopupProvider(order.provider?.code);
+    if (!provider.isConfigured()) return null;
+
+    const result = await provider.getOrderStatus({
+      providerRef: order.providerRef,
+      providerOrderId: order.providerOrderId,
+    });
+    if (!result.ok) return { settled: false, providerChecked: true, applied: false };
+
+    const { applyProviderStatus } = await import("@/services/order.service.js");
+    const applied = await applyProviderStatus({
+      providerRef: order.providerRef,
+      providerOrderId: order.providerOrderId,
+      providerStatus: result.data?.status,
+      providerMessage: result.data?.message ?? null,
+      source: "PAGE_LOAD",
+    });
+    return { settled: false, providerChecked: true, applied: Boolean(applied?.applied) };
+  } catch (err) {
+    console.error("order.page_provider_reconcile_failed", {
+      orderId: order.id,
+      message: String(err?.message ?? err).slice(0, 200),
+    });
+    return null;
+  }
+}
+
 export default async function OrderDetailPage({ params }) {
   const user = await getCurrentUser();
   if (!user) redirect("/login?next=/member/orders");
 
   const { id } = await params;
+
+  // ── Ask Midtrans for the truth ONCE, before expiry and read. ───────────────
+  //
+  // THE POOL BUG THIS FIXES: this page used to make TWO serial gateway round
+  // trips, `getOrderForUser()` cancelled the charge at Midtrans, then this
+  // block asked Midtrans whether the money had arrived. Each call can take up to
+  // 20s under a sandbox stall, and both hold a Postgres connection from a pool
+  // of 10. Two open tabs exhausted it, and every other request died with
+  // "Connection terminated due to connection timeout", including the admin
+  // list, which never touches Midtrans at all.
+  //
+  // Reconciling FIRST means a paid order is settled before expiry is even
+  // considered, so the cancel path is skipped for the order the customer just
+  // paid. One call, and the settlement it records is what the render reads.
+  const reconciled = await reconcileOrderOnPageLoad({ orderId: id, userId: user.id });
+
+  // The customer's page should not show a payment window that already closed.
+  // This page used to rely entirely on the customer's own checkout path to
+  // expire their orders, so an abandoned order stayed open in the member area
+  // until the customer tried to buy something again. The sweep here is scoped
+  // to nothing customer-specific (it expires by deadline, not by user), and it
+  // is the same call /dev/orders makes, so what the customer sees and what the
+  // operator sees can never disagree.
+  await expireStaleOrders({ limit: 100 }).catch(() => {});
 
   let order;
   try {
@@ -45,11 +182,30 @@ export default async function OrderDetailPage({ params }) {
     notFound();
   }
 
+  if (reconciled?.settled || reconciled?.applied) {
+    // Re-read: the reconcile changed the row this page is about to render, and
+    // the optimistic lock in the apply path means the row below is now
+    // consistent. This covers BOTH outcomes: a Midtrans settlement (settled)
+    // and a top-up provider status change (applied), e.g. PROCESSING → SUCCESS
+    // driven by the poll instead of the webhook.
+    try {
+      order = await getOrderForUser({ orderId: id, userId: user.id });
+    } catch {
+      notFound();
+    }
+  }
+
   const inputEntries = Object.entries(order.customerInput ?? {});
-  const expiresSoon =
-    order.status === ORDER_STATUS.PENDING_PAYMENT &&
-    order.expiresAt &&
-    new Date(order.expiresAt).getTime() > Date.now();
+
+  // The deadline the customer must actually beat.
+  //
+  // Midtrans's per-channel expiry is shorter than our order window (QRIS is
+  // ~15 minutes against a 60-minute order), and it is the binding one: a QR
+  // stops being payable the moment Midtrans expires it, no matter what our own
+  // window says. The payment row carries the reconciled deadline (earliest of
+  // the two), so it is shown when present; the order window is only the
+  // fallback for a payment whose instrument was never issued.
+  const deadline = order.payment?.expiresAt ?? order.expiresAt ?? null;
 
   return (
     <div className="container-page py-8 sm:py-10">
@@ -79,8 +235,21 @@ export default async function OrderDetailPage({ params }) {
           <Alert tone="warning" title="Menunggu pembayaran">
             <p>
               Selesaikan pembayaran sebelum{" "}
-              <strong>{order.expiresAt ? formatDateTime(order.expiresAt) : "batas waktu"}</strong>.
+              <strong>{deadline ? formatDateTime(deadline) : "batas waktu"}</strong>.
               Transaksi akan otomatis dibatalkan jika melewati batas waktu tersebut.
+            </p>
+          </Alert>
+        </div>
+      ) : null}
+
+      {order.status === ORDER_STATUS.CANCELLED || order.status === ORDER_STATUS.EXPIRED ? (
+        <div className="mb-6">
+          <Alert tone="neutral" title="Transaksi dibatalkan">
+            <p>
+              Batas waktu pembayaran untuk transaksi ini sudah berakhir. Transaksi ini sudah
+              tertutup dan tidak bisa diperpanjang. Silakan{" "}
+              <Link href="/topup" className="font-medium underline">pesan ulang</Link>{" "}
+              bila Anda masih ingin top-up yang sama.
             </p>
           </Alert>
         </div>
@@ -91,7 +260,7 @@ export default async function OrderDetailPage({ params }) {
           <Alert tone="info" title="Sedang diproses">
             <p>
               Pesanan sudah dikirim ke penyedia layanan. Status akan diperbarui otomatis begitu
-              hasilnya diterima — Anda tidak perlu melakukan apa pun.
+              hasilnya diterima. Anda tidak perlu melakukan apa pun.
             </p>
           </Alert>
         </div>
@@ -176,6 +345,7 @@ export default async function OrderDetailPage({ params }) {
               <PaymentInstructions
                 orderId={order.id}
                 payment={order.payment}
+                orderStatus={order.status}
               />
             ) : null}
           </section>
@@ -219,10 +389,8 @@ export default async function OrderDetailPage({ params }) {
               <Row label="Jumlah" value={`${order.quantity}×`} />
             </dl>
 
-            {expiresSoon ? (
-              <p className="mt-4 text-xs text-foreground-subtle">
-                Batas pembayaran: {formatDateTime(order.expiresAt)}
-              </p>
+            {order.status === ORDER_STATUS.PENDING_PAYMENT && deadline ? (
+              <DeadlineNote deadline={deadline} expiresAt={order.expiresAt} />
             ) : null}
 
             <div className="mt-5 flex flex-col gap-2">

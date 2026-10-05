@@ -1,14 +1,14 @@
 // ============================================================================
-// /dev/orders/[id] — order detail with the operator action panel.
+// /dev/orders/[id], order detail with the operator action panel.
 //
 // The actions shown depend on the CURRENT status, because an operator staring at
 // a screen of disabled buttons learns nothing. Each button appears only when its
 // precondition holds, and each posts an explicit action to
-// /api/dev/orders/[id] — never a raw status write.
+// /api/dev/orders/[id], never a raw status write.
 // ============================================================================
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getOrderForAdmin } from "@/services/order.service.js";
+import { getOrderForAdmin, expireStaleOrders } from "@/services/order.service.js";
 import { PageHeader, Section, FieldList, Money } from "@/components/dev/DevUI";
 import OrderActions from "@/components/dev/OrderActions";
 import StatusBadge from "@/components/ui/StatusBadge";
@@ -19,8 +19,65 @@ export const dynamic = "force-dynamic";
 
 export const metadata = { title: "Detail Transaksi" };
 
+/**
+ * Ask the top-up provider for the truth, then route it through the same
+ * `applyProviderStatus` sink the webhook uses.
+ *
+ * The operator page is the backstop for the customer page: on localhost the
+ * provider webhook cannot reach us, so a delivered order stays PROCESSING with
+ * providerStatus UNKNOWN until the 2-minute scheduler runs. An operator who
+ * opens this page to confirm or refund must read a status that is not stale,
+ * and the manual "Reconcile" action below should not be the only way to get
+ * one. This mirrors what the member detail page now does on load.
+ */
+async function reconcileProviderOnPageLoad({ orderId }) {
+  const { prisma } = await import("@/lib/db.js");
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    select: { id: true, status: true, providerRef: true, providerOrderId: true,
+      provider: { select: { code: true } } },
+  });
+  if (!order || order.status !== ORDER_STATUS.PROCESSING || !order.providerRef) return false;
+
+  try {
+    const { getTopupProvider } = await import("@/providers/index.js");
+    const provider = getTopupProvider(order.provider?.code);
+    if (!provider.isConfigured()) return false;
+
+    const result = await provider.getOrderStatus({
+      providerRef: order.providerRef,
+      providerOrderId: order.providerOrderId,
+    });
+    if (!result.ok) return false;
+
+    const { applyProviderStatus } = await import("@/services/order.service.js");
+    const applied = await applyProviderStatus({
+      providerRef: order.providerRef,
+      providerOrderId: order.providerOrderId,
+      providerStatus: result.data?.status,
+      providerMessage: result.data?.message ?? null,
+      source: "PAGE_LOAD",
+    });
+    return Boolean(applied?.applied);
+  } catch (err) {
+    console.error("dev.order.provider_reconcile_failed", {
+      orderId: order.id,
+      message: String(err?.message ?? err).slice(0, 200),
+    });
+    return false;
+  }
+}
+
 export default async function DevOrderDetailPage({ params }) {
   const { id } = await params;
+
+  // Same reason as the list page: the status shown here must already reflect a
+  // closed payment window. An operator acting on this page confirms or rejects
+  // based on what they read; a stale "Menunggu Pembayaran" invites a confirm on
+  // an order whose charge is void.
+  await expireStaleOrders({ limit: 100 }).catch(() => {});
+
+  const providerApplied = await reconcileProviderOnPageLoad({ orderId: id }).catch(() => false);
 
   let order;
   try {
@@ -29,18 +86,35 @@ export default async function DevOrderDetailPage({ params }) {
     notFound();
   }
 
+  // A provider status change (e.g. PROCESSING → SUCCESS from the poll) alters
+  // what the actions row below should offer, so re-read after applying it.
+  if (providerApplied) {
+    try {
+      order = await getOrderForAdmin(id);
+    } catch {
+      notFound();
+    }
+  }
+
+  // The manual confirm path exists for an off-platform payment, but with
+  // Midtrans settling everything automatically this order is almost never in a
+  // state where it applies. Keeping the check honest: an order already PAID
+  // (or beyond payment entirely) has nothing to confirm.
   const canConfirmPayment =
     order.payment &&
     order.payment.status !== "PAID" &&
-    (order.status === ORDER_STATUS.PENDING_PAYMENT || order.status === ORDER_STATUS.PAYMENT_PROCESSING);
+    order.status === ORDER_STATUS.PENDING_PAYMENT;
 
   const canRejectPayment = Boolean(order.payment) && order.payment.status !== "PAID";
   const canReconcile = order.status === ORDER_STATUS.PROCESSING;
   const canRetryDispatch = order.status === ORDER_STATUS.PAID;
-  const canCancel =
-    order.status === ORDER_STATUS.PENDING_PAYMENT || order.status === ORDER_STATUS.PAYMENT_PROCESSING;
+  const canCancel = order.status === ORDER_STATUS.PENDING_PAYMENT;
+  // A refund is bookkeeping for money that WAS taken: anything past payment.
+  // EXPIRED/CANCELLED never collected, and an already-REFUND row is done.
+  const canRefund = !["EXPIRED", "CANCELLED", "REFUND"].includes(order.status);
 
-  const hasActions = canConfirmPayment || canRejectPayment || canReconcile || canRetryDispatch || canCancel;
+  const hasActions =
+    canConfirmPayment || canRejectPayment || canReconcile || canRetryDispatch || canCancel || canRefund;
 
   return (
     <>
@@ -78,6 +152,7 @@ export default async function DevOrderDetailPage({ params }) {
             canReconcile={canReconcile}
             canRetryDispatch={canRetryDispatch}
             canCancel={canCancel}
+            canRefund={canRefund}
           />
         </Section>
       ) : null}

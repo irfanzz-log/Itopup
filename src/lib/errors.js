@@ -24,6 +24,20 @@ export const ERROR_STATUS = {
   ITP_ACCOUNT_BLOCKED: 403,
   ITP_INVALID_CREDENTIALS: 401,
   ITP_SESSION_EXPIRED: 401,
+  ITP_EMAIL_NOT_VERIFIED: 403,
+
+  // ── Email OTP ────────────────────────────────────────────────────────────
+  // 400 for user-error codes (wrong/expired/misused), 503 when the mail
+  // service itself is the problem: the user did nothing wrong and retrying
+  // might work once SMTP recovers.
+  ITP_OTP_NOT_SENT: 400,
+  ITP_OTP_INVALID: 400,
+  ITP_OTP_EXPIRED: 400,
+  ITP_OTP_ALREADY_USED: 400,
+  ITP_OTP_TOO_MANY_ATTEMPTS: 400,
+  ITP_OTP_MAIL_UNAVAILABLE: 503,
+  ITP_PASSWORD_TOO_WEAK: 400,
+  ITP_TICKET_INVALID: 401,
 
   // ── Rate limiting / bot ──────────────────────────────────────────────────
   ITP_RATE_LIMITED: 429,
@@ -64,6 +78,7 @@ export const ERROR_STATUS = {
 
   // ── Generic ──────────────────────────────────────────────────────────────
   ITP_CONFLICT: 409,
+  ITP_CHECKOUT_PAUSED: 503,
   ITP_INTERNAL_ERROR: 500,
 };
 
@@ -79,6 +94,19 @@ export const ERROR_MESSAGE = {
   ITP_ACCOUNT_BLOCKED: "Akun Anda sedang diblokir. Hubungi dukungan ITOPUP.",
   ITP_INVALID_CREDENTIALS: "Email atau password salah.",
   ITP_SESSION_EXPIRED: "Sesi Anda berakhir. Silakan masuk kembali.",
+  ITP_EMAIL_NOT_VERIFIED: "Email belum diverifikasi. Cek kotak masuk untuk kode verifikasi.",
+
+  // Every OTP failure carries an actionable instruction, not just a verdict:
+  // "kode salah" tells the user nothing they can act on that "minta kode baru"
+  // does not.
+  ITP_OTP_NOT_SENT: "Belum ada kode yang dikirim ke email ini.",
+  ITP_OTP_INVALID: "Kode salah.",
+  ITP_OTP_EXPIRED: "Kode sudah kedaluwarsa. Minta kode baru.",
+  ITP_OTP_ALREADY_USED: "Kode sudah pernah dipakai. Minta kode baru.",
+  ITP_OTP_TOO_MANY_ATTEMPTS: "Terlalu banyak percobaan salah. Minta kode baru.",
+  ITP_OTP_MAIL_UNAVAILABLE: "Layanan email sedang tidak tersedia. Coba lagi nanti.",
+  ITP_PASSWORD_TOO_WEAK: "Password terlalu lemah. Pilih password yang lebih kuat.",
+  ITP_TICKET_INVALID: "Sesi ini sudah kedaluwarsa. Silakan masuk dengan Google kembali.",
   ITP_RATE_LIMITED: "Terlalu banyak percobaan. Coba lagi sebentar lagi.",
   ITP_CAPTCHA_REQUIRED: "Verifikasi diperlukan. Selesaikan captcha untuk melanjutkan.",
   ITP_NOT_FOUND: "Data yang Anda cari tidak ditemukan.",
@@ -107,6 +135,7 @@ export const ERROR_MESSAGE = {
   ITP_PROVIDER_INSUFFICIENT_BALANCE: "Layanan top-up sedang tidak tersedia.",
   ITP_PROVIDER_UNKNOWN_STATE: "Status transaksi sedang diverifikasi.",
   ITP_CONFLICT: "Data sudah ada.",
+  ITP_CHECKOUT_PAUSED: "Transaksi untuk sementara dinonaktifkan. Silakan coba lagi nanti.",
   ITP_INTERNAL_ERROR: "Terjadi kesalahan. Silakan coba lagi.",
 };
 
@@ -121,7 +150,7 @@ export class AppError extends Error {
     this.name = "AppError";
     this.code = ERROR_STATUS[code] ? code : "ITP_INTERNAL_ERROR";
     this.status = ERROR_STATUS[this.code] ?? 400;
-    /** Technical detail for the server log — never serialised to the client. */
+    /** Technical detail for the server log, never serialised to the client. */
     this.cause = opts.cause;
     /** Structured, non-sensitive context for the server log. */
     this.meta = opts.meta;

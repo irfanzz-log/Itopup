@@ -1,5 +1,5 @@
 // ============================================================================
-// Webhook service — replay protection and callback application.
+// Webhook service, replay protection and callback application.
 //
 // A webhook is the one place where an unauthenticated party can move money, so
 // this file is written defensively:
@@ -8,7 +8,7 @@
 //     a unique constraint on (providerCode, externalId). A duplicate insert
 //     (P2002) means the callback is a replay and must be acknowledged without
 //     re-processing. That is the whole replay defence, and it works even if two
-//     copies arrive simultaneously — the database serialises them, not us.
+//     copies arrive simultaneously; the database serialises them, not us.
 //   * nothing here trusts a status string to be sane; it is mapped through the
 //     adapter and then through the order state machine.
 // ============================================================================
@@ -18,7 +18,7 @@ import { createLogger } from "../lib/logger.js";
 import { AppError } from "../lib/errors.js";
 import { ORDER_STATUS, PAYMENT_STATUS } from "../lib/constants.js";
 import { normalizePaymentStatus } from "../providers/payment/contract.js";
-import { dispatchOrder } from "./order.service.js";
+import { dispatchOrder, syncOrderToPayment } from "./order.service.js";
 
 /**
  * Stable hash of a raw webhook body.
@@ -94,7 +94,7 @@ export async function applyTopupCallback({ callback, log }) {
     });
     return { applied: result.applied, retryable: false };
   } catch (err) {
-    // An unknown reference is permanent — retrying will not conjure the order.
+    // An unknown reference is permanent; retrying will not conjure the order.
     if (err instanceof AppError && err.code === "ITP_WEBHOOK_UNKNOWN_REFERENCE") {
       log.warn("webhook.topup_unknown_reference", { providerRef: callback.providerRef });
       return { applied: false, retryable: false };
@@ -109,7 +109,7 @@ export async function applyTopupCallback({ callback, log }) {
  *
  * The gateway is the authority on whether money arrived, but only AFTER its
  * signature has been verified by the payment adapter. This function assumes
- * verification already happened — it must never be called from a route that
+ * verification already happened. It must never be called from a route that
  * skipped it.
  *
  * What it guarantees:
@@ -218,6 +218,23 @@ export async function applyPaymentWebhook({
     orderId: payment.orderId,
     status: nextPaymentStatus,
   });
+
+  // A dead charge must kill the order too, or the two columns contradict each
+  // other until a human opens the order page. PAID/PROCESSING orders are left
+  // alone: the top-up may already be in flight (syncOrderToPayment checks).
+  if (!isPaid) {
+    try {
+      await syncOrderToPayment({
+        orderId: payment.orderId,
+        paymentStatus: nextPaymentStatus,
+        log,
+      });
+    } catch (err) {
+      // The payment row is already updated; the webhook must still 200 so the
+      // gateway stops retrying. The next reconcile or page read will catch up.
+      log.error("webhook.sync_order_failed", { orderId: payment.orderId, message: String(err?.message ?? err).slice(0, 200) });
+    }
+  }
 
   // Dispatch only now, and only outside the transaction: a provider call inside
   // a database transaction holds a connection for the duration of a network

@@ -1,7 +1,7 @@
 // ============================================================================
 // Loads the right .env file for the current process, once.
 //
-// SELECTION — the project keeps one file per target, never a live .env:
+// SELECTION: the project keeps one file per target, never a live .env:
 //   test       → .env.test   (tests must never point at the real database)
 //   production → .env.prod   (the deployed Supabase project)
 //   anything   → .env.dev    (local development)
@@ -34,10 +34,10 @@ export function loadEnv() {
   if (loaded) return;
   loaded = true;
 
-  // `override: false` — a real environment variable (CI, Vercel, docker) always
+  // `override: false`: a real environment variable (CI, Vercel, docker) always
   // beats a local file.
   //
-  // `/*turbopackIgnore: true*/` — the resolved path is only ever known at
+  // `/*turbopackIgnore: true*/`: the resolved path is only ever known at
   // runtime, so static analysis cannot see that it is bounded to three fixed
   // filenames (.env.dev/.env.prod/.env.test). Without it Turbopack traces the
   // entire project as server code. This is server-only code; the annotation

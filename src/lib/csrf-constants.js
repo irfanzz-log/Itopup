@@ -1,5 +1,5 @@
 // ============================================================================
-// CSRF wire names — the ONLY CSRF module a client component may import.
+// CSRF wire names: the ONLY CSRF module a client component may import.
 //
 // WHY THIS FILE EXISTS
 //

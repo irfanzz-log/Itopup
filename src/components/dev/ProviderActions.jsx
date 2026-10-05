@@ -139,14 +139,14 @@ function Report({ report }) {
       {nothingFound ? (
         <p className="mt-2 text-sm">
           Provider tidak mengembalikan produk apa pun. Periksa kredensial dan kategori yang
-          diminta — katalog kosong biasanya berarti kredensial salah, bukan katalog kosong.
+          diminta. Katalog kosong biasanya berarti kredensial salah, bukan katalog kosong.
         </p>
       ) : null}
 
       {data.unmatchedTotal > 0 ? (
         <div className="mt-2">
           <p className="text-sm font-semibold">
-            {data.unmatchedTotal} SKU provider belum punya aturan pemetaan — tidak di-link:
+            {data.unmatchedTotal} SKU provider belum punya aturan pemetaan, tidak di-link:
           </p>
           <ul className="mt-1 space-y-0.5 font-mono text-xs">
             {data.unmatched.map((row) => (
@@ -158,7 +158,7 @@ function Report({ report }) {
           </ul>
           <p className="mt-1 text-xs">
             Tambahkan aturan di <code>src/config/provider-mapping.js</code> lalu jalankan
-            sinkronisasi lagi. SKU yang tidak dikenal sengaja TIDAK di-link otomatis — salah link
+            sinkronisasi lagi. SKU yang tidak dikenal sengaja TIDAK di-link otomatis: salah link
             berarti pelanggan membeli produk yang salah.
           </p>
         </div>

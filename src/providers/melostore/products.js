@@ -1,5 +1,5 @@
 // ============================================================================
-// Melostore H2H — product catalogue (pricelist).
+// Melostore H2H: product catalogue (pricelist).
 //
 // Called by the SYNC JOB only, never from a request path: the frontend reads the
 // database, the sync writes the database. A page that fetched the provider live
@@ -8,16 +8,16 @@
 //
 // IMPLEMENTED FROM THE OFFICIAL DOCUMENTATION (h2h.melostore.id/id/docs):
 //
-//   GET /api/v1/h2h/pricelists/categories   — list of { name, slug }
-//   GET /api/v1/h2h/pricelists              — full pricelist
-//   GET /api/v1/h2h/pricelists/{category}   — pricelist for one category
+//   GET /api/v1/h2h/pricelists/categories   : list of { name, slug }
+//   GET /api/v1/h2h/pricelists              : full pricelist
+//   GET /api/v1/h2h/pricelists/{category}   : pricelist for one category
 //
 //   Query params: server, format, limit (max 1000), cursor.
 //
 //   ⚠️  DEPRECATION NOTICE FROM THE DOCS: "Respons penuh tanpa parameter limit
 //   akan dihentikan pada 28 Agustus 2026. Mulai tanggal tersebut, parameter
 //   limit menjadi wajib." We therefore ALWAYS send limit and paginate with the
-//   documented cursor — the adapter is written for the post-deprecation API
+//   documented cursor. The adapter is written for the post-deprecation API
 //   rather than for the soon-to-break behaviour.
 //
 //   Rate limit: 20 calls/minute per partner profile, HTTP 429 + Retry-After.
@@ -54,7 +54,7 @@ export const PRODUCTS_PATH = "/api/v1/h2h/pricelists";
  *
  * MEASURED, not assumed: the rate limit is charged per REQUEST, not per row.
  * A raw probe against the live API showed `limit=1000` returning 1000 rows and
- * decrementing `x-ratelimit-remaining` by exactly 1 — the same cost as
+ * decrementing `x-ratelimit-remaining` by exactly 1, the same cost as
  * `limit=5`. Using 1000 therefore fetches the whole 20.887-SKU catalogue in 21
  * requests instead of 42, which matters because the pricelist sub-bucket is
  * only 20 requests/minute.
@@ -66,7 +66,7 @@ const DEFAULT_LIMIT = 1000;
  * Safety ceiling on pagination.
  *
  * The docs report ~10,234 products at limit=500, i.e. ~21 pages. The cap exists
- * so a provider bug (a cursor that never terminates) cannot spin forever — it is
+ * so a provider bug (a cursor that never terminates) cannot spin forever; it is
  * a bound on a runaway loop, not a business limit.
  */
 const MAX_PAGES = 60;
@@ -127,7 +127,7 @@ export async function getProducts({ category, log, limit } = {}) {
 
     // Pace the pagination. The pricelist sub-bucket is 20 requests/minute and a
     // full sync is ~21 pages, so firing them back-to-back guarantees a 429 on
-    // the last page — the sync would then fail *after* doing all the work. The
+    // the last page. The sync would then fail *after* doing all the work. The
     // delay is skipped on the first page so a small catalogue stays fast.
     if (page > 0) await sleep(PAGE_PACING_MS);
 

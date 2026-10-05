@@ -3,7 +3,7 @@
 //
 // `description` is rendered as TEXT, never as HTML. Promo copy is admin-authored,
 // and an admin account can be phished or a lower-privileged operator can be
-// social-engineered — so no promo field is ever passed to
+// social-engineered, so no promo field is ever passed to
 // dangerouslySetInnerHTML. If rich content is needed later, sanitise on WRITE
 // and render through a vetted sanitiser, not by trusting the column.
 // ============================================================================
@@ -27,8 +27,6 @@ export default function PromoStrip({ promos }) {
 }
 
 export function PromoCard({ promo, compact = false }) {
-  const expired = new Date(promo.endsAt).getTime() < Date.now();
-
   return (
     <article className={`card flex flex-col overflow-hidden ${compact ? "" : "h-full"}`}>
       {promo.banner || promo.image ? (

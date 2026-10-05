@@ -1,8 +1,8 @@
 // ============================================================================
-// /dev/settings — environment and integration status, plus the audit log.
+// /dev/settings, environment and integration status, plus the audit log.
 //
 // WHAT THIS PAGE MUST NEVER DO: print a secret. `envReport()` returns
-// `{ name, configured: boolean }` — the NAME of each variable and whether it is
+// `{ name, configured: boolean }`, the NAME of each variable and whether it is
 // set, never its value. That distinction is the whole reason the helper exists,
 // and it is why this page can be useful to an operator without being a
 // credential leak.
@@ -50,7 +50,7 @@ export default async function DevSettingsPage({ searchParams }) {
     <>
       <PageHeader
         title="Pengaturan"
-        description="Status konfigurasi environment dan integrasi. Nilai rahasia tidak pernah ditampilkan — hanya nama variabel dan status terisi atau tidak."
+        description="Status konfigurasi environment dan integrasi. Nilai rahasia tidak pernah ditampilkan, hanya nama variabel dan status terisi atau tidak."
       >
         <Badge tone={isProduction() ? "success" : "warning"}>
           {isProduction() ? "Produksi" : "Non-produksi"}
@@ -128,7 +128,7 @@ export default async function DevSettingsPage({ searchParams }) {
                   ) : null}
                   {provider.configured && provider.webhookConfigured === false ? (
                     <p className="mt-1 text-[11px] text-warning-fg">
-                      Secret webhook belum diisi — callback akan ditolak.
+                      Secret webhook belum diisi. Callback akan ditolak.
                     </p>
                   ) : null}
                 </li>

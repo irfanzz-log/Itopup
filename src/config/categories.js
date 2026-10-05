@@ -33,13 +33,13 @@ export function categoryPath(kind) {
   return CATEGORY_KIND_PATH[kind] ?? "game";
 }
 
-/** Inverse of categoryPath — resolve a URL segment back to a kind. */
+/** Inverse of categoryPath: resolve a URL segment back to a kind. */
 export function kindFromPath(segment) {
   const entry = Object.entries(CATEGORY_KIND_PATH).find(([, path]) => path === segment);
   return entry?.[0] ?? null;
 }
 
-/** Label for a category kind. Falls back to the raw value rather than "" — an
+/** Label for a category kind. Falls back to the raw value rather than "": an
  *  unknown kind should look wrong, not blank. */
 export function categoryLabel(kind) {
   return CATEGORY_KIND_LABEL[kind] ?? String(kind);

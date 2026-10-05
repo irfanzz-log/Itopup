@@ -1,5 +1,5 @@
 // ============================================================================
-// Melostore H2H — balance.
+// Melostore H2H: balance.
 //
 // Used by the admin dashboard and by a guard before dispatching an expensive
 // order: dispatching with a known-insufficient balance just burns a provider
@@ -48,7 +48,7 @@ export async function getBalance({ log } = {}) {
   try {
     const data = result.data?.data ?? result.data;
 
-    // Documented field is `h2h_balance`. The unit is rupiah — the docs show
+    // Documented field is `h2h_balance`. The unit is rupiah: the docs show
     // 15750000.0 for a balance worth 926.47 USD at a rate of 17000, i.e. IDR.
     const balance = Number(data?.h2h_balance);
     if (!Number.isFinite(balance)) {

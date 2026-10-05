@@ -1,9 +1,9 @@
 // ============================================================================
-// GET /api/orders/[id] — one order, scoped to its owner.
+// GET /api/orders/[id], one order, scoped to its owner.
 //
 // The `userId` filter is part of the QUERY, not a post-fetch comparison: an
 // order belonging to somebody else is indistinguishable from one that does not
-// exist (both 404). That is the IDOR defence — an attacker cannot probe which
+// exist (both 404). That is the IDOR defence, an attacker cannot probe which
 // order ids are real, and cannot learn a valid id by timing or by error text.
 //
 // Staff may read any order through /dev, which uses the server-rendered pages

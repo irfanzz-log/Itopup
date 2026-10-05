@@ -2,11 +2,12 @@ import "./globals.css";
 import { ThemeProvider, themeInitScript } from "@/components/theme/ThemeProvider";
 import SiteHeader from "@/components/layout/SiteHeader";
 import Footer from "@/components/layout/Footer";
-
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3200";
+import AnnouncementBanner from "@/components/layout/AnnouncementBanner";
+import { readAnnouncement } from "@/services/announcement.service.js";
+import { SITE_URL } from "@/lib/site-url.js";
 
 export const metadata = {
-  metadataBase: new URL(APP_URL),
+  metadataBase: new URL(SITE_URL),
   title: {
     default: "Itopup - Top Up Game & Pulsa",
     template: "%s | ITOPUP",
@@ -25,7 +26,7 @@ export const metadata = {
     title: "Itopup - Top Up Game & Pulsa",
     description:
       "Top up game dan pulsa dengan proses otomatis 24 jam. Harga transparan dan pembayaran aman.",
-    url: APP_URL,
+    url: SITE_URL,
   },
   twitter: {
     card: "summary_large_image",
@@ -51,7 +52,12 @@ export const viewport = {
   ],
 };
 
-export default function RootLayout({ children }) {
+export default async function RootLayout({ children }) {
+  // Request-time read so a flip in /dev/announcements applies on the next page
+  // load, with no deploy. A failure here resolves to null, so the banner
+  // degrades to absent rather than taking the whole page down.
+  const announcement = await readAnnouncement();
+
   return (
     // suppressHydrationWarning: the inline script below sets `class` and
     // `data-theme` on <html> before React hydrates, so the server markup and the
@@ -64,6 +70,10 @@ export default function RootLayout({ children }) {
       <body className="flex min-h-screen flex-col bg-background font-sans text-foreground antialiased">
         <ThemeProvider>
           <a href="#main" className="skip-link">Lewati ke konten utama</a>
+          {/* ABOVE the header: the announcement is the first thing a customer
+              sees on every page. Rendered server-side so it is present in the
+              first paint and in the no-JS view. */}
+          <AnnouncementBanner announcement={announcement} />
           <SiteHeader />
           <main id="main" className="flex-1">{children}</main>
           <Footer />

@@ -1,5 +1,5 @@
 // ============================================================================
-// /dev/orders — transaction list with the operator's action queue.
+// /dev/orders, transaction list with the operator's action queue.
 //
 // Filters live in the QUERY STRING so the list is server-rendered and
 // shareable: "look at /dev/orders?status=PAYMENT_PROCESSING" in a support thread
@@ -9,7 +9,7 @@
 // only screen where the provider's price is a legitimate concern.
 // ============================================================================
 import Link from "next/link";
-import { listOrdersForAdmin } from "@/services/order.service.js";
+import { listOrdersForAdmin, expireStaleOrders } from "@/services/order.service.js";
 import { PageHeader, Section, DataTable, Td, Money } from "@/components/dev/DevUI";
 import StatusBadge from "@/components/ui/StatusBadge";
 import Pagination, { ResultCount } from "@/components/ui/Pagination";
@@ -21,10 +21,13 @@ export const dynamic = "force-dynamic";
 
 export const metadata = { title: "Transaksi" };
 
-/** Filters in lifecycle order — the order an operator thinks in. */
+/** Filters in lifecycle order, the order an operator thinks in. */
 const FILTERS = [
   ORDER_STATUS.PENDING_PAYMENT,
-  ORDER_STATUS.PAYMENT_PROCESSING,
+  // PAYMENT_PROCESSING is deliberately NOT offered. Midtrans settles every
+  // method automatically, so the status exists in the state machine but an
+  // order never rests there: it is the sub-second hop between charge and PAID.
+  // A filter that can never match a row is a promise the page breaks.
   ORDER_STATUS.PAID,
   ORDER_STATUS.PROCESSING,
   ORDER_STATUS.SUCCESS,
@@ -40,6 +43,13 @@ export default async function DevOrdersPage({ searchParams }) {
   const page = Math.max(1, parseInt(params?.page ?? "1", 10) || 1);
   const status = FILTERS.includes(params?.status) ? params.status : null;
   const search = typeof params?.q === "string" ? params.q.slice(0, 100) : "";
+
+  // Expiry must be true when an operator reads it, not when the customer who
+  // abandoned the order happens to come back. Without this sweep the list shows
+  // "Menunggu Pembayaran" on orders whose window closed days ago, the exact
+  // failure this page exists to prevent. Swallowing errors is deliberate: a
+  // sweep that cannot run must not stop an operator from seeing orders.
+  await expireStaleOrders({ limit: 100 }).catch(() => {});
 
   const { items, pagination } = await listOrdersForAdmin({ page, limit: 20, status, search });
 
@@ -60,9 +70,9 @@ export default async function DevOrdersPage({ searchParams }) {
       />
 
       {/* ── Search ───────────────────────────────────────────────────────── */}
-      <form method="get" className="card mb-4 flex flex-wrap items-end gap-3 p-4">
+      <form method="get" className="card mb-4 flex flex-col gap-3 p-4 sm:flex-wrap sm:flex-row sm:items-end">
         {status ? <input type="hidden" name="status" value={status} /> : null}
-        <div className="min-w-[16rem] flex-1">
+        <div className="min-w-0 flex-1 sm:min-w-[16rem]">
           <label htmlFor="q" className="label">Cari</label>
           <input
             id="q"
@@ -73,10 +83,12 @@ export default async function DevOrdersPage({ searchParams }) {
             className="field"
           />
         </div>
-        <button type="submit" className="btn-primary">Cari</button>
-        {search || status ? (
-          <Link href="/dev/orders" className="btn-ghost">Reset</Link>
-        ) : null}
+        <div className="flex flex-wrap gap-2 sm:contents">
+          <button type="submit" className="btn-primary">Cari</button>
+          {search || status ? (
+            <Link href="/dev/orders" className="btn-ghost">Reset</Link>
+          ) : null}
+        </div>
       </form>
 
       {/* ── Status filters ───────────────────────────────────────────────── */}

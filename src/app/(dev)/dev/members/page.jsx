@@ -1,5 +1,5 @@
 // ============================================================================
-// /dev/members — member list.
+// /dev/members, member list.
 //
 // The columns answer the questions support actually gets: "how much has this
 // person spent", "how many orders", "are they blocked". Spend is aggregated in
@@ -11,6 +11,7 @@ import { PageHeader, Section, DataTable, Td, Money } from "@/components/dev/DevU
 import StatusBadge from "@/components/ui/StatusBadge";
 import Pagination, { ResultCount } from "@/components/ui/Pagination";
 import { EmptyState } from "@/components/ui/primitives";
+import MemberFilters from "@/components/dev/MemberFilters";
 import { formatDateTime } from "@/lib/format";
 import { ROLE_LABEL, USER_STATUS_LABEL } from "@/lib/constants";
 
@@ -49,43 +50,15 @@ export default async function DevMembersPage({ searchParams }) {
       />
 
       {/* ── Search + filters ─────────────────────────────────────────────── */}
-      <form method="get" className="card mb-4 flex flex-wrap items-end gap-3 p-4">
-        {status ? <input type="hidden" name="status" value={status} /> : null}
-        {role ? <input type="hidden" name="role" value={role} /> : null}
-        <div className="min-w-[16rem] flex-1">
-          <label htmlFor="q" className="label">Cari</label>
-          <input
-            id="q"
-            name="q"
-            type="search"
-            defaultValue={search}
-            placeholder="Nama, email, atau nomor telepon"
-            className="field"
-          />
-        </div>
-        <div className="w-40">
-          <label htmlFor="status" className="label">Status</label>
-          <select id="status" name="status" defaultValue={status ?? ""} className="field">
-            <option value="">Semua</option>
-            {STATUSES.map((value) => (
-              <option key={value} value={value}>{USER_STATUS_LABEL[value]}</option>
-            ))}
-          </select>
-        </div>
-        <div className="w-40">
-          <label htmlFor="role" className="label">Peran</label>
-          <select id="role" name="role" defaultValue={role ?? ""} className="field">
-            <option value="">Semua</option>
-            {ROLES.map((value) => (
-              <option key={value} value={value}>{ROLE_LABEL[value]}</option>
-            ))}
-          </select>
-        </div>
-        <button type="submit" className="btn-primary">Terapkan</button>
-        {search || status || role ? (
-          <Link href="/dev/members" className="btn-ghost">Reset</Link>
-        ) : null}
-      </form>
+      <MemberFilters
+        search={search}
+        status={status}
+        role={role}
+        roles={ROLES}
+        statuses={STATUSES}
+        statusLabels={USER_STATUS_LABEL}
+        roleLabels={ROLE_LABEL}
+      />
 
       {items.length === 0 ? (
         <EmptyState

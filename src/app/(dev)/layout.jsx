@@ -1,5 +1,5 @@
 // ============================================================================
-// /dev layout — the REAL authorization gate for the staff area.
+// /dev layout, the REAL authorization gate for the staff area.
 //
 // Same reasoning as the member layout: src/proxy.js only checks that a cookie
 // EXISTS, and a matcher change can silently drop coverage. This layout verifies

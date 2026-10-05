@@ -2,7 +2,7 @@
 // Operator action panel for a single order.
 //
 // A client component because each action is a request whose result must be shown
-// in place — an operator confirming a transfer needs to see "dispatched" or
+// in place, an operator confirming a transfer needs to see "dispatched" or
 // "provider rejected it", not a page reload that looks identical either way.
 //
 // Destructive and irreversible actions (reject, cancel) require a confirmation
@@ -27,6 +27,7 @@ export default function OrderActions({
   canReconcile,
   canRetryDispatch,
   canCancel,
+  canRefund,
 }) {
   const router = useRouter();
 
@@ -78,6 +79,8 @@ export default function OrderActions({
           : `Status belum dapat dipastikan: ${result.data.message}`;
       case "cancel":
         return "Transaksi dibatalkan.";
+      case "refund":
+        return "Transaksi ditandai sudah dikembalikan. Pastikan transfer baliknya benar-benar terkirim.";
       case "retry_dispatch":
         return result.data.dispatched
           ? `Transaksi dikirim ulang (status: ${result.data.status}).`
@@ -98,7 +101,7 @@ export default function OrderActions({
             mengirimkannya ke provider.
           </p>
           <div className="mt-3 flex flex-wrap items-end gap-3">
-            <div className="w-44">
+            <div className="w-full sm:w-44">
               <label htmlFor="paidAmount" className="label">Nominal diterima</label>
               <input
                 id="paidAmount"
@@ -218,6 +221,54 @@ export default function OrderActions({
                 </button>
               )
             ) : null}
+          </div>
+        </div>
+      ) : null}
+
+      {/* ── Outcome ───────────────────────────────────────────────────────── */}
+      {canRefund ? (
+        <div className="rounded-lg border border-danger-border p-3">
+          <p className="text-sm font-semibold text-danger-fg">Pengembalian dana</p>
+          <p className="mt-1 text-xs text-foreground-subtle">
+            Ini hanya mencatat status. Transfer baliknya kamu lakukan manual: kirim uangnya, baru
+            klik tombol ini agar transaksi sesuai dengan rekening.
+          </p>
+          <div className="mt-2">
+            <label htmlFor="refundReason" className="label">
+              Alasan pengembalian <span className="text-danger-fg">*</span>
+            </label>
+            <input
+              id="refundReason"
+              type="text"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              maxLength={300}
+              placeholder="Contoh: transfer gagal, dikembalikan via QRIS"
+              className="field"
+            />
+          </div>
+
+          <div className="mt-3 flex flex-wrap gap-2">
+            {confirming === "refund" ? (
+              <>
+                <button
+                  type="button"
+                  className="btn-danger"
+                  disabled={busy !== null || !reason.trim()}
+                  onClick={() => run("refund", { reason: reason.trim() })}
+                >
+                  {busy === "refund" ? <Spinner /> : null}
+                  Ya, tandai sudah dikembalikan
+                </button>
+                <button type="button" className="btn-ghost" onClick={() => setConfirming(null)}>
+                  Batal
+                </button>
+              </>
+            ) : (
+              <button type="button" className="btn-secondary" onClick={() => setConfirming("refund")}>
+                Tandai dikembalikan
+              </button>
+            )}
           </div>
         </div>
       ) : null}

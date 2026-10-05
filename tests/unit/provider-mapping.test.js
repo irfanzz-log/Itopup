@@ -5,8 +5,8 @@
 //
 // `provider-mapping.js` links a provider SKU code to one of our variants by
 // naming a `gameSlug` and a `variantSlug`. Those are strings. Nothing in the
-// type system connects them to the real catalogue, so a typo — or a rename of a
-// variant in `games.js` — silently produces a rule that matches nothing.
+// type system connects them to the real catalogue, so a typo, or a rename of a
+// variant in `games.js`, silently produces a rule that matches nothing.
 //
 // The failure is quiet and expensive: the sync reports the SKU as `unmatched`,
 // no `ProviderProduct` row is written, the product shows as unconnected in the
@@ -26,7 +26,7 @@ import { GAME_SEED, VARIANT_SEED } from "../../src/config/games.js";
  *
  * `VARIANT_SEED` is keyed by game slug, then by product slug. The product slug
  * is not needed here because variant slugs are unique per game in this
- * catalogue — but the flattening is deliberate so a duplicate would surface as
+ * catalogue, but the flattening is deliberate so a duplicate would surface as
  * a same-slug entry rather than being hidden.
  */
 function variantSlugsFor(gameSlug) {
@@ -76,7 +76,7 @@ describe("provider-mapping ↔ catalogue", () => {
 
   it("variantSlugByProviderCode values exist in their game when a brand rule supplies it", () => {
     // This table is only consulted for brands named in gameSlugByBrandName, so
-    // only its shape can be checked without a brand context — every value must
+    // only its shape can be checked without a brand context, every value must
     // still be a plausible slug rather than an empty string.
     for (const [sku, slug] of Object.entries(PROVIDER_MAPPING.variantSlugByProviderCode)) {
       expect(typeof slug, `${sku}`).toBe("string");

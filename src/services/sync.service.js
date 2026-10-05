@@ -1,5 +1,5 @@
 // ============================================================================
-// Catalog sync — provider pricelist → database.
+// Catalog sync, provider pricelist → database.
 //
 // THE FLOW THIS FILE IMPLEMENTS:
 //
@@ -13,20 +13,20 @@
 //
 // It will NOT guess which internal variant a provider SKU corresponds to. A
 // wrong link means a customer buys "86 Diamonds" and the provider delivers
-// "355 Diamonds" — or worse, the wrong game entirely. So an unmatched SKU is
+// "355 Diamonds", or worse, the wrong game entirely. So an unmatched SKU is
 // REPORTED, never silently attached.
 //
 // Matching happens in two passes:
-//   1. EXISTING links — a ProviderProduct row already points at a variant. Its
+//   1. EXISTING links: a ProviderProduct row already points at a variant. Its
 //      price and availability are refreshed. This is the steady-state path.
-//   2. NEW SKUs — matched by an explicit rule in src/config/provider-mapping.js.
+//   2. NEW SKUs, matched by an explicit rule in src/config/provider-mapping.js.
 //      Anything not covered is returned in `unmatched` for an operator to link
 //      on /dev/products.
 //
 // ── PRICING ─────────────────────────────────────────────────────────────────
 //
 // costPrice comes from the provider (their price for OUR tier). sellingPrice is
-// DERIVED from it via src/config/pricing.js — unless an admin has pinned one,
+// DERIVED from it via src/config/pricing.js, unless an admin has pinned one,
 // in which case it is left alone. The provider can never set a selling price.
 // ============================================================================
 import { prisma } from "../lib/db.js";
@@ -103,17 +103,17 @@ export async function syncProviderCatalog({
   // ── 2b. Collapse duplicate provider codes, then duplicate VARIANTS ──────
   //
   // The database keys a link on @@unique([providerId, providerCode]) AND
-  // @@unique([providerId, productVariantId]) — one ProviderProduct row per
+  // @@unique([providerId, productVariantId]), one ProviderProduct row per
   // internal variant, per provider. Two provider SKUs mapped to the same
   // variant therefore raise P2002 and, because the whole sync is one
   // transaction, roll back every other link with it.
   //
   // Both shapes occur on the live pricelist:
-  //   * SAME code, many rows — the provider lists a SKU once per
+  //   * SAME code, many rows: the provider lists a SKU once per
   //     `server_code` (`mlid5d-s11` is both "Server 1" and "Server 11").
   //     The server is chosen at TRANSACTION time (customer_target_zone), not
   //     at link time, so keeping one row loses nothing.
-  //   * DIFFERENT codes, SAME delivered amount — the e-wallet catalogue lists
+  //   * DIFFERENT codes, SAME delivered amount: the e-wallet catalogue lists
   //     every denomination under several SKU families. MEASURED on DANA:
   //     `dnt10ko-s4` (Rp 10.640), `dzs10ko-s4` (Rp 10.574), `dgs10ko-s4`
   //     (Rp 10.615) and `dpsnoa10ko-s4` (Rp 10.559, inactive) all deliver
@@ -163,14 +163,14 @@ export async function syncProviderCatalog({
   // variant. Two situations collide here:
   //
   //   * several NEW SKUs resolve to one variant (the e-wallet catalogue lists
-  //     every denomination under several SKU families — MEASURED on DANA:
+  //     every denomination under several SKU families. MEASURED on DANA:
   //     `dnt10ko-s4`, `dzs10ko-s4`, `dgs10ko-s4` and `dpsnoa10ko-s4` all
   //     deliver "Rp. 10.000").
-  //   * a NEW SKU resolves to a variant that ANOTHER code already links — the
+  //   * a NEW SKU resolves to a variant that ANOTHER code already links: the
   //     row exists under the other code, so inserting again raises P2002.
   //
-  // Collapsing here makes the surviving SKU a deliberate choice — the cheapest
-  // ACTIVE one — instead of whichever order the provider paginated in. A
+  // Collapsing here makes the surviving SKU a deliberate choice, the cheapest
+  // ACTIVE one, instead of whichever order the provider paginated in. A
   // variant that is already linked keeps its existing link: re-pointing it at a
   // different provider SKU changes what we pay for and is an operator decision,
   // not a sync side effect.
@@ -227,7 +227,7 @@ export async function syncProviderCatalog({
     }
 
     // A variant already linked under a different code is skipped, not
-    // re-pointed — that would change what we buy and is an operator decision.
+    // re-pointed, as that would change what we buy and is an operator decision.
     if (existingVariantIds.has(variant.id)) {
       report.duplicateVariants++;
       continue;
@@ -248,7 +248,7 @@ export async function syncProviderCatalog({
   }
 
   // `report.duplicateVariants` is incremented in the loop above, where the
-  // collisions are actually detected — both the "already linked under another
+  // collisions are actually detected, both the "already linked under another
   // code" case and the "several new SKUs, one variant" case.
 
   // ── 3. Build the writes ──────────────────────────────────────────────────
@@ -303,43 +303,61 @@ export async function syncProviderCatalog({
 
   // ── 4. Persist ───────────────────────────────────────────────────────────
   if (!dryRun) {
-    // One transaction: a half-applied sync would leave some variants at the old
-    // cost and some at the new one, and the margin report would be wrong until
-    // the next run.
+    // Chunked transactions, not one big one.
     //
-    // The default 5s interactive-transaction timeout is far too small for a
-    // hosted database. Each write is a separate round trip, and against
-    // Supabase's pooler from a home connection that is ~200-400ms per row, so
-    // even 56 links exceed 5s and the whole sync rolls back with "a query
-    // cannot be executed on an expired transaction". Measured: 6.2s for 56
-    // rows. maxWait is raised too, because acquiring a connection from the
-    // pooler can itself take longer than the 2s default.
-    await prisma.$transaction(async (tx) => {
-      for (const write of providerProductWrites) {
-        const { id, ...data } = write;
-        if (id) {
-          await tx.providerProduct.update({ where: { id }, data });
-        } else {
-          await tx.providerProduct.create({ data });
+    // The sync used to run every write inside a SINGLE interactive transaction.
+    // The catalogue is ~20.000 rows and we write up to ~600 ProviderProduct +
+    // ProductVariant rows per run. Each write is its own round trip, and
+    // against the hosted pooler that is ~150-400ms per row, so a full sync
+    // blows past any sane timeout and dies with
+    // "A query cannot be executed on an expired transaction" (P2028), leaving
+    // the whole run rolled back. MEASURED: 60.210ms against a 60.000ms timeout.
+    //
+    // Chunking bounds the worst case instead of trying to outrun it. Each chunk
+    // commits independently, so a run that dies midway has still applied every
+    // chunk before it instead of nothing; the next run then picks up the rest.
+    // Within a chunk, price and availability still commit atomically, so a
+    // variant can never be observed at the new cost while its ProviderProduct
+    // link is still at the old price.
+    //
+    // Chunk size is bounded so that chunk-duration stays comfortably under the
+    // timeout even on a slow link: 40 rows x ~400ms = ~16s worst case.
+    const CHUNK_ROWS = 40;
+    const chunkTimeout = 90_000;
+
+    // Both write lists are flattened into one, tagged by target model. The two
+    // were separate arrays before; merging them here lets one chunk carry a
+    // ProviderProduct update and the ProductVariant update it derived from,
+    // which is what keeps the two tables from being observed out of step.
+    const allWrites = [
+      ...providerProductWrites.map((w) => ({ model: "providerProduct", ...w })),
+      ...variantUpdates.map((w) => ({ model: "productVariant", ...w })),
+    ];
+    for (let i = 0; i < allWrites.length; i += CHUNK_ROWS) {
+      const chunk = allWrites.slice(i, i + CHUNK_ROWS);
+      await prisma.$transaction(async (tx) => {
+        for (const write of chunk) {
+          const { model, id, ...data } = write;
+          const target = model === "productVariant" ? tx.productVariant : tx.providerProduct;
+          if (id) {
+            await target.update({ where: { id }, data });
+          } else {
+            await target.create({ data });
+          }
         }
-      }
+      }, { timeout: chunkTimeout, maxWait: 15_000 });
+    }
 
-      for (const update of variantUpdates) {
-        const { id, ...data } = update;
-        await tx.productVariant.update({ where: { id }, data });
-      }
-
-      await tx.provider.update({
-        where: { id: providerRow.id },
-        data: {
-          lastSyncAt: new Date(),
-          lastSyncStatus: `ok:${report.fetched}`,
-          // Persisted so /dev/providers can show whether the provider still
-          // declares the same inquiry fields we render inputs for.
-          catalogMeta: { brands, inquiryForms, syncedAt: new Date().toISOString() },
-        },
-      });
-    }, { timeout: 60_000, maxWait: 15_000 });
+    await prisma.provider.update({
+      where: { id: providerRow.id },
+      data: {
+        lastSyncAt: new Date(),
+        lastSyncStatus: `ok:${report.fetched}`,
+        // Persisted so /dev/providers can show whether the provider still
+        // declares the same inquiry fields we render inputs for.
+        catalogMeta: { brands, inquiryForms, syncedAt: new Date().toISOString() },
+      },
+    });
   }
 
   report.durationMs = Date.now() - startedAt;
@@ -365,7 +383,7 @@ export async function syncProviderCatalog({
  * Derive the prices for a variant from a provider product.
  *
  * TWO RULES, both deliberate:
- *   * costPrice is the provider's number. Always overwritten — a stale cost
+ *   * costPrice is the provider's number. Always overwritten; a stale cost
  *     makes every margin figure wrong.
  *   * sellingPrice is only recomputed when the admin has NOT pinned one. An
  *     explicitly set selling price is a business decision, and a sync that
@@ -374,11 +392,22 @@ export async function syncProviderCatalog({
 function derivePrices(product, variant) {
   const costChanged = Number(variant.costPrice) !== Number(product.price);
 
-  const sellingPrice = sellingPriceFromCost(product.price);
+  // Airtime is priced with a fixed spread, not a percentage; see pricing.js.
+  //
+  // The provider's live `category_name` is "Airtime & Data (Pulsa & Data)", not
+  // "Airtime". An exact comparison silently fell through and repriced every
+  // airtime SKU with the 4% game markup, so a Rp 95.265 card was sold at
+  // ~Rp 99.076 instead of Rp 96.265. Match on the category's prefix, the part
+  // the provider actually guarantees.
+  const kind = typeof product.category === "string" && product.category.startsWith("Airtime")
+    ? "PULSA"
+    : undefined;
+
+  const sellingPrice = sellingPriceFromCost(product.price, { kind });
   // A variant whose selling price equals exactly the derived value is treated as
   // "not pinned", so it keeps tracking the cost. Once an admin edits it to a
   // different number it stops being overwritten.
-  const isPinned = Number(variant.sellingPrice) !== sellingPriceFromCost(variant.costPrice);
+  const isPinned = Number(variant.sellingPrice) !== sellingPriceFromCost(variant.costPrice, { kind });
   const sellChanged = !isPinned && Number(variant.sellingPrice) !== sellingPrice;
 
   const update = { id: variant.id, costPrice: product.price };
@@ -402,7 +431,7 @@ function derivePrices(product, variant) {
  * Pulsa is modelled as ONE game with ONE Product per operator, and every
  * operator reuses the same variant slugs (`d5000`, `d10000`, …). A rule
  * carrying only `{gameSlug, variantSlug}` therefore resolves to whichever
- * operator's Product the database returns first — silently wiring, e.g.,
+ * operator's Product the database returns first, silently wiring, e.g.,
  * an Axis SKU to a Telkomsel card. When a rule carries `productSlug`, it
  * is part of the lookup key and the correct operator's card is chosen.
  */
@@ -417,7 +446,7 @@ function resolveNewSkuRule(product, brandById) {
   if (!gameSlug) return null;
 
   // With a known game, the variant slug is derived from the provider SKU via an
-  // explicit per-game table — still no guessing.
+  // explicit per-game table, still no guessing.
   const variantSlug = PROVIDER_MAPPING.variantSlugByProviderCode?.[product.providerCode];
   if (!variantSlug) return null;
 

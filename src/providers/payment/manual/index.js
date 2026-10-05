@@ -1,5 +1,5 @@
 // ============================================================================
-// Manual / offline transfer — payment adapter.
+// Manual / offline transfer: payment adapter.
 //
 // Implements src/providers/payment/contract.js in full. Read client.js first for
 // why this adapter exists and how destinations are configured.
@@ -7,16 +7,16 @@
 // THE HONEST PART: there is no external system to talk to. A human operator is
 // the authority on whether the money arrived. So:
 //
-//   * createPayment   — issues real instructions: destinations + the exact
+//   * createPayment   : issues real instructions: destinations + the exact
 //                       amount to send (order total + a unique 3-digit code).
-//   * getPaymentStatus — returns PENDING. There is nothing to poll. The status
+//   * getPaymentStatus : returns PENDING. There is nothing to poll. The status
 //                       changes when an operator confirms it in /dev/orders, and
 //                       that path is an audited admin action, not a webhook.
-//   * verifyWebhook   — returns NOT_IMPLEMENTED. No bank and no e-wallet sends us
+//   * verifyWebhook   : returns NOT_IMPLEMENTED. No bank and no e-wallet sends us
 //                       a callback. Faking a verified webhook here would create
 //                       an unauthenticated endpoint that marks orders paid.
-//   * cancelPayment   — voided locally.
-//   * refundPayment   — NOT_IMPLEMENTED. A refund is a transfer a human makes;
+//   * cancelPayment   : voided locally.
+//   * refundPayment   : NOT_IMPLEMENTED. A refund is a transfer a human makes;
 //                       recording it as done automatically would be a lie.
 //
 // Everything it returns is derived from configuration and the order, never
@@ -138,7 +138,7 @@ export const manualTransferProvider = {
 
   /**
    * No bank and no e-wallet calls us. Returning a verified webhook here would be
-   * an unauthenticated "mark paid" endpoint — the single most dangerous thing
+   * an unauthenticated "mark paid" endpoint, the single most dangerous thing
    * this codebase could contain. So it refuses, explicitly.
    */
   async verifyWebhook() {

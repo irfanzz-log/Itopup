@@ -3,7 +3,7 @@
 //
 // Every security-relevant action goes through here. Two rules:
 //   1. The audit writer NEVER throws into the caller's path. An audit failure
-//      must not roll back a legitimate business operation — it is logged loudly
+//      must not roll back a legitimate business operation. It is logged loudly
 //      instead. (Exception: when called inside a transaction with `strict`,
 //      where atomicity is the point.)
 //   2. Metadata is filtered. A password hash, a token, or an API key must never

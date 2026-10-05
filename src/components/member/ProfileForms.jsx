@@ -6,9 +6,9 @@
 // Three independent forms in one file because they share field primitives and
 // error handling, and splitting them would duplicate that three times:
 //
-//   * ProfileForm      — name + phone
-//   * PasswordForm     — current + new password
-//   * SessionsForm     — revoke every other session
+//   * ProfileForm, name + phone
+//   * PasswordForm, current + new password
+//   * SessionsForm, revoke every other session
 //
 // SECURITY NOTE: the password form does NOT send the user id. The API derives it
 // from the session, so a member cannot change somebody else's password by
@@ -99,7 +99,7 @@ export function PasswordForm() {
     event.preventDefault();
     if (state.status === "loading") return;
 
-    // Client-side check is convenience only — the server re-validates both the
+    // Client-side check is convenience only, the server re-validates both the
     // strength and the current password.
     if (form.newPassword !== form.confirm) {
       setState({

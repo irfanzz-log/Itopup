@@ -17,7 +17,7 @@ import { AppError } from "./errors.js";
 import { CSRF_COOKIE, CSRF_HEADER } from "./csrf-constants.js";
 
 // Re-exported so server callers have a single import path. Client components
-// must import from `./csrf-constants.js` directly — see that file for why.
+// must import from `./csrf-constants.js` directly. See that file for why.
 export { CSRF_COOKIE, CSRF_HEADER };
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
@@ -45,7 +45,7 @@ function allowedOrigins() {
     try {
       origins.add(new URL(appUrl).origin);
     } catch {
-      /* malformed env var — ignored, the checks below still apply */
+      /* malformed env var: ignored, the checks below still apply */
     }
   }
   if (process.env.NODE_ENV !== "production") {
@@ -88,7 +88,7 @@ export function assertSameOrigin(req, { allowToken = true } = {}) {
   throw new AppError("ITP_FORBIDDEN", "Permintaan tidak dapat diverifikasi.");
 }
 
-/** Minimal cookie reader — avoids importing NextRequest-only APIs into services. */
+/** Minimal cookie reader: avoids importing NextRequest-only APIs into services. */
 export function readCookie(req, name) {
   const raw = req?.headers?.get?.("cookie");
   if (!raw) return null;
@@ -105,7 +105,7 @@ export function readCookie(req, name) {
 /**
  * The token cookie is intentionally NOT HttpOnly: the client reads it and
  * echoes it in the header. It is bound to the session by name, not by value, so
- * leaking it alone grants nothing — an attacker still needs the HttpOnly
+ * leaking it alone grants nothing: an attacker still needs the HttpOnly
  * session cookie, which same-origin policy keeps out of reach.
  */
 export function csrfCookieOptions(isProduction) {

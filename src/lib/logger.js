@@ -1,5 +1,5 @@
 // ============================================================================
-// Structured logging — one JSON object per line.
+// Structured logging: one JSON object per line.
 //
 // Everything logged goes through `log()` so redaction happens in exactly one
 // place. The rules are the same as the error layer: a log line must be useful

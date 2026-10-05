@@ -1,5 +1,5 @@
 // ============================================================================
-// Melostore H2H — account validation (check nickname).
+// Melostore H2H: account validation (check nickname).
 //
 // The provider is the ONLY authority on whether a player id exists. The frontend
 // never decides, and neither does a local format check beyond the game's own
@@ -14,7 +14,7 @@
 //   Not found → 422 { success: false, error: { code: 4001, category: "not_found" } }
 //
 // ⚠️  THE DISTINCTION THAT MATTERS: an unknown account is an HTTP 422 with
-// `error.category: "not_found"` — NOT a 200 with a flag. So a 422 is a
+// `error.category: "not_found"` and NOT a 200 with a flag. So a 422 is a
 // NORMAL, EXPECTED answer meaning "no such player", while a 5xx or a timeout is
 // an outage. Reporting an outage as "account not found" would make a customer
 // retype a correct player id forever; reporting a wrong id as an outage would
@@ -74,7 +74,7 @@ export async function validateAccount({ gameSlug, fields, skuCode, log } = {}) {
     // The documented "not found" is a 422. client.js classifies
     // `error.category === "not_found"` as REJECTED, which is what lets us turn
     // it into a clean { valid: false } instead of surfacing an error to the
-    // customer — while a 5xx/timeout still propagates as an outage.
+    // customer, while a 5xx/timeout still propagates as an outage.
     const isNotFound =
       result.error?.code === PROVIDER_ERROR.REJECTED &&
       /akun tidak ditemukan|user id|not found/i.test(result.error?.message || "");

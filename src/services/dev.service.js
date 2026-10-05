@@ -9,7 +9,7 @@
 // place, one definition of "revenue".
 //
 // WHAT COUNTS AS REVENUE: orders that actually completed (SUCCESS). An order
-// that is PAID but still PROCESSING is money received but not yet delivered —
+// that is PAID but still PROCESSING is money received but not yet delivered.
 // reporting it as revenue would overstate the business and hide a stuck queue.
 // Both are returned separately so the dashboard can show the distinction instead
 // of hiding it.
@@ -61,7 +61,7 @@ export async function revenueSummary({ since = null } = {}) {
   ]);
 
   return {
-    /// Money for delivered goods — the only figure safe to call revenue.
+    /// Money for delivered goods, the only figure safe to call revenue.
     completed: {
       orders: completed._count._all,
       total: completed._sum.total ?? 0,
@@ -113,7 +113,7 @@ export async function actionQueue() {
           expiresAt: { not: null, lte: soon, gte: now },
         },
       }),
-      // Customer pressed "I have transferred" — an operator must confirm.
+      // Customer pressed "I have transferred". An operator must confirm.
       prisma.payment.count({ where: { status: "PROCESSING" } }),
       // Dispatched but unresolved for over 10 minutes: needs reconciliation.
       prisma.order.count({

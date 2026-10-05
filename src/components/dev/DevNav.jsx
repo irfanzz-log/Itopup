@@ -17,6 +17,8 @@ export const DEV_LINKS = [
   { href: "/dev/providers", label: "Provider", icon: "plug" },
   { href: "/dev/promos", label: "Promo", icon: "tag" },
   { href: "/dev/settings", label: "Pengaturan", icon: "cog" },
+  { href: "/dev/announcements", label: "Pengumuman", icon: "megaphone" },
+  { href: "/dev/security", label: "Enkripsi", icon: "shield" },
 ];
 
 export default function DevNav({ user }) {

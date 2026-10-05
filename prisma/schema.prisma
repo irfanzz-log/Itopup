@@ -11,8 +11,13 @@ model User {
   id             String     @id @default(uuid())
   name           String
   email          String     @unique
+  emailVerified  Boolean    @default(false)
   phone          String?
-  passwordHash   String
+  // Nullable on purpose: an account created via Google OAuth has no password
+  // until the user sets one on the set-password page. NULL is the "no
+  // password" marker; a sentinel string here would be accepted by
+  // `verifyPassword` and read as a real hash elsewhere.
+  passwordHash   String?
   role           Role       @default(MEMBER)
   status         UserStatus @default(ACTIVE)
   blockedReason  String?
@@ -21,10 +26,13 @@ model User {
   lastLoginAt    DateTime?
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
-  auditLogs      AuditLog[] @relation("AuditActor")
+  auditLogs      AuditLog[]      @relation("AuditActor")
   orders         Order[]
   createdPromos  Promo[]
+  voucherClaims  VoucherClaim[]
   sessions       Session[]
+  gameCredentials GameCredential[]
+  oauthAccounts  OAuthAccount[]
 
   @@index([email])
   @@index([role, status])
@@ -56,11 +64,12 @@ model Category {
   slug        String       @unique
   description String?
   icon        String?
-  sortOrder   Int          @default(0)
-  isActive    Boolean      @default(true)
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-  games       Game[]
+  sortOrder    Int       @default(0)
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  games        Game[]
+  promos       Promo[]   @relation("CategoryToPromo")
 
   @@index([isActive, sortOrder])
   @@map("categories")
@@ -86,13 +95,25 @@ model Game {
   inputFields        Json      @default("[]")
   /// Whether the provider adapter exposes account validation for this game.
   supportsValidation Boolean   @default(false)
+  /// Whether CHECKOUT must collect the customer's own game login (identifier +
+  /// secret) for this game, because the provider's flow demands it.
+  ///
+  /// SECURITY: `true` moves this game's checkout from "what the customer knows
+  /// about an account" (a User ID) to "what the customer IS on that account"
+  /// (a password). It switches on the credential path: an extra input section,
+  /// an encrypted store, and a mapper that refuses to send a secret in a field
+  /// the provider did not ask for. Games without it never see a password field
+  /// and their checkout is unchanged.
+  needsGameLogin   Boolean   @default(false)
   isPopular          Boolean   @default(false)
   isActive           Boolean   @default(true)
   sortOrder          Int       @default(0)
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
-  category           Category  @relation(fields: [categoryId], references: [id])
-  products           Product[]
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  category      Category  @relation(fields: [categoryId], references: [id])
+  products      Product[]
+  promos        Promo[]   @relation("GameToPromo")
+  gameCredentials GameCredential[]
 
   @@index([categoryId, isActive, sortOrder])
   @@index([slug])
@@ -117,7 +138,7 @@ model Product {
   updatedAt   DateTime         @updatedAt
   variants    ProductVariant[]
   game        Game             @relation(fields: [gameId], references: [id])
-
+  promos      Promo[]          @relation("ProductToPromo")
   @@unique([gameId, slug])
   @@index([gameId, isActive, sortOrder])
   @@map("products")
@@ -147,9 +168,10 @@ model ProductVariant {
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
   orderItems       OrderItem[]
-  product          Product           @relation(fields: [productId], references: [id])
+  product          Product             @relation(fields: [productId], references: [id])
   providerProducts ProviderProduct[]
-  promos           Promo[]           @relation("ProductVariantToPromo")
+  promos           Promo[]             @relation("ProductVariantToPromo")
+  promoTarget      Promo?              @relation("VariantToPromoTarget")
 
   @@unique([productId, slug])
   @@index([productId, isActive, sortOrder])
@@ -256,15 +278,27 @@ model Order {
   /// payload we reject it (409) instead of silently returning the old order.
   requestHash      String
   expiresAt        DateTime?
+  /// The stored game login this order was placed against, when the game's
+  /// provider flow required the customer's own credentials (see
+  /// Game.needsGameLogin). Written ONCE at checkout; never updated. It is a
+  /// reference, not a credential: the ciphertext stays in GameCredential, and
+  /// this column is what lets dispatch reload the secret without storing it on
+  /// the order row itself.
+  credentialId     String?
   ip               String?
   userAgent        String?
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
   items            OrderItem[]
-  provider         Provider?        @relation(fields: [providerId], references: [id])
+  provider         Provider?       @relation(fields: [providerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   user             User             @relation(fields: [userId], references: [id])
   payment          Payment?
   logs             TransactionLog[]
+  /// The stored game login this order was placed against. The relation is what
+  /// lets dispatch reload the ciphertext. It is deliberately NOT cascading
+  /// (ON DELETE NO ACTION in the migration): deleting a stored login is refused
+  /// while an order still references it, so history is never silently rewritten.
+  credential       GameCredential?  @relation(fields: [credentialId], references: [id])
 
   @@unique([userId, idempotencyKey])
   @@unique([providerId, providerRef])
@@ -369,15 +403,72 @@ model Promo {
   startsAt      DateTime
   endsAt        DateTime
   isActive      Boolean          @default(true)
+
+  /// ── Scope ──────────────────────────────────────────────────────────────
+  /// Resolves `categoryId` / `gameId` / `productId` / `variantId`.
+  /// ALL means "no target, applies to the whole catalogue".
+  scope         PromoScope       @default(ALL)
+  categoryId    String?
+  gameId        String?
+  productId     String?
+  /// @unique because scope=VARIANT targets exactly one nominal (1:1).
+  variantId     String?          @unique
+
+  /// ── Distribution ───────────────────────────────────────────────────────
+  /// AUTO: applied at checkout without any code, automatically, on every
+  ///   eligible purchase. This is the "diskon manual" the admin sets per
+  ///   category/game/product/variant.
+  /// VOUCHER: the customer must claim it (or type its code) at checkout.
+  distribution  PromoDistribution @default(VOUCHER)
+
+  /// ── Voucher audience & quota ───────────────────────────────────────────
+  /// Who may CLAIM a voucher. Ignored for AUTO promos.
+  audience      VoucherAudience  @default(ALL_USERS)
+  /// For LOYAL_CUSTOMER: minimum completed orders. Zero otherwise.
+  minCompletedOrders Int          @default(0)
+  /// Total claims allowed. null = unlimited. Enforced atomically at claim,
+  /// never by read-then-write.
+  claimLimit    Int?
+  /// Cache of VoucherClaim rows with status ACTIVE/REDEEMED. Kept in sync by
+  /// the claim path; a denormalised count lets the UI show "3/10 tersisa"
+  /// without counting on every render.
+  claimCount    Int              @default(0)
+
+  /// ── Visibility ─────────────────────────────────────────────────────────
+  /// Only meaningful for VOUCHER promos (AUTO promos are never listed
+  /// publicly anyway — they apply by themselves). PUBLIC vouchers show on
+  /// /promo and on the claimable shelf; HIDDEN ones are usable only by typing
+  /// their code. Default PUBLIC so a voucher created before this column
+  /// existed keeps appearing exactly where it already appeared.
+  visibility    PromoVisibility  @default(PUBLIC)
+
   createdAt     DateTime         @default(now())
   updatedAt     DateTime         @updatedAt
   createdById   String?
   codes         PromoCode[]
   createdBy     User?            @relation(fields: [createdById], references: [id])
+  /// Legacy M2M kept for the original promo-to-variant scoping. New promos use
+  /// `scope` + `variantId` instead; this field is retained so existing rows
+  /// still resolve and no migration loses data.
   variants      ProductVariant[] @relation("ProductVariantToPromo")
+  category      Category?        @relation("CategoryToPromo", fields: [categoryId], references: [id])
+  game          Game?            @relation("GameToPromo", fields: [gameId], references: [id])
+  product       Product?         @relation("ProductToPromo", fields: [productId], references: [id])
+  /// The single variant this promo targets when scope = VARIANT. Distinct from
+  /// the `variants` M2M above — one is the new target column, the other the
+  /// legacy relation.
+  variant       ProductVariant?  @relation("VariantToPromoTarget", fields: [variantId], references: [id])
+  claims        VoucherClaim[]
 
   @@index([isActive, startsAt, endsAt])
   @@index([slug])
+  @@index([scope, isActive])
+  @@index([distribution, isActive])
+  @@index([visibility, isActive])
+  @@index([categoryId, isActive])
+  @@index([gameId, isActive])
+  @@index([productId, isActive])
+  @@index([variantId, isActive])
   @@map("promos")
 }
 
@@ -397,6 +488,38 @@ model PromoCode {
 
   @@index([promoId, isActive])
   @@map("promo_codes")
+}
+
+/// One user's ownership of one claimable voucher.
+///
+/// A row here IS the customer's voucher: "Voucher Saya" is the ACTIVE rows,
+/// checkout spends one by id, and the atomic `claimLimit` guard is what stops
+/// the 11th user from claiming a 10-user voucher.
+model VoucherClaim {
+  id        String      @id @default(uuid())
+  userId    String
+  promoId   String
+  status    ClaimStatus @default(ACTIVE)
+  claimedAt DateTime    @default(now())
+  /// Order invoice that consumed this claim. Set at redemption, kept forever.
+  redeemedAt  DateTime?
+  redeemedInvoice String?
+  user      User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  promo     Promo  @relation(fields: [promoId], references: [id], onDelete: Cascade)
+
+  /// Exactly ONE row per user per promo. The status column deliberately stays
+  /// OUT of this constraint: it is state, not identity. With status in the key
+  /// (@@unique([userId, promoId, status]) — the original schema), redeeming a
+  /// claim flips it ACTIVE→REDEEMED and the user is then locked out of that
+  /// promo forever, because any later claim re-redeemed collides with the
+  /// existing REDEEMED row on the same triple. A customer who re-claims a promo
+  /// they already used once and then checks out gets `redeemVoucherClaim`'s
+  /// updateMany P2002 → POST /api/orders 500 (requestId
+  /// f9405f6a-638f-4ebc-b268-715ec70df2ea, 2026-09-29).
+  @@unique([userId, promoId])
+  @@index([userId, status])
+  @@index([promoId, status])
+  @@map("voucher_claims")
 }
 
 /// Admin action trail. Written by the audit service, never by user code paths.
@@ -467,6 +590,58 @@ model AppSetting {
   @@map("app_settings")
 }
 
+/// Email OTP codes for registration and recovery.
+///
+/// One live row per (subject, purpose). A new code for the same subject and
+/// purpose replaces the old one rather than coexisting, so there is never more
+/// than one valid code a user can be presented with at a time; this is what
+/// makes "wrong code" unambiguous and keeps the table from accumulating
+/// guessable rows.
+model EmailOtp {
+  id        String   @id @default(uuid())
+  subject   String
+  purpose   EmailOtpPurpose
+  codeHash  String
+  attempts  Int      @default(0)
+  expiresAt DateTime
+  consumedAt DateTime?
+  ip        String?
+  // For REGISTER: the form the user submitted (name, passwordHash, phone), so
+  // the account is only created once the code is confirmed. Stored on the row
+  // instead of a second table or a client-side round-trip, because the code is
+  // already the single secret gating this data.
+  payload   Json?
+  createdAt DateTime @default(now())
+
+  @@unique([subject, purpose])
+  @@index([expiresAt])
+  @@map("email_otps")
+}
+
+/// A Google account linked to a local user (OAuth login).
+///
+/// One row per provider + subject (`sub` claim), not per user: if a Google
+/// account is unlinked and another local user links it later, the second link
+/// must be a new row, and the old one must not be reusable to sign in as the
+/// first user. `email` is stored to detect a Google sign-in for an email that
+/// already belongs to a password account, so the account can be linked rather
+/// than duplicated.
+model OAuthAccount {
+  id            String   @id @default(uuid())
+  userId        String
+  provider      String   @default("google")
+  subject       String
+  email         String
+  linkedAt      DateTime @default(now())
+  lastLoginAt   DateTime?
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, subject])
+  @@unique([provider, email])
+  @@index([userId])
+  @@map("oauth_accounts")
+}
+
 enum Role {
   MEMBER
   DEV
@@ -476,6 +651,10 @@ enum Role {
 enum UserStatus {
   ACTIVE
   BLOCKED
+}
+
+enum EmailOtpPurpose {
+  REGISTER
 }
 
 enum CategoryKind {
@@ -498,6 +677,53 @@ enum ProviderStatus {
   ACTIVE
   DEGRADED
   DISABLED
+}
+
+/// ENCRYPTED game-account credentials for a user, for games whose provider flow
+/// requires a login the customer owns (eFootball on Melostore asks for the
+/// player's own game Login + Password — see Game.needsGameLogin).
+///
+/// SECURITY CONTRACT — read before touching this model:
+///
+///   * `secretCipher` and `secretIv` are AES-256-GCM ciphertext + IV. The
+///     plaintext is held ONLY in memory, for the single provider call that
+///     needs it. Nothing in the app ever writes a plaintext credential to the
+///     database, a log, a TransactionLog.metadata, or an API response.
+///   * The key is `GAME_CREDENTIAL_KEY`, derived from AUTH_SECRET (never a
+///     second secret to leak independently), and rotated by re-encrypting.
+///   * `lastUsedAt` is the only usage signal kept. A credential may be deleted
+///     by its owner at any time; deletion is a real row removal, never a flag.
+///   * `attempts`/`failures` are deliberately NOT recorded here: tracking them
+///     would make this table an oracle for which logins are valid.
+model GameCredential {
+  id           String   @id @default(uuid())
+  userId       String
+  /// The game this login belongs to. Credentials are per-game, never shared.
+  gameId       String
+  /// The login identifier the customer typed (e.g. an email or Konami ID).
+  /// Stored in plaintext: it is the equivalent of a User ID — it identifies the
+  /// account without granting access to it — and showing it back is how the
+  /// customer recognises which stored login this is.
+  login        String
+  /// AES-256-GCM ciphertext of the password/secret, base64.
+  secretCipher String
+  /// 12-byte GCM IV, base64. Unique per row: GCM with a reused IV under one key
+  /// is catastrophic, so the IV is generated per encryption, never derived.
+  secretIv     String
+  lastUsedAt   DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  game         Game     @relation(fields: [gameId], references: [id])
+  /// Orders placed against this login. Non-cascading by design (see Order).
+  orders       Order[]
+
+  /// One stored login per (user, game, login). A customer may keep several
+  /// logins for the same game (a smurf account), but the same login twice would
+  /// be the same secret stored twice.
+  @@unique([userId, gameId, login])
+  @@index([userId, gameId])
+  @@map("game_credentials")
 }
 
 /// Explicit state machine — never a boolean. Transitions are enforced in
@@ -527,4 +753,66 @@ enum PaymentStatus {
 enum DiscountType {
   FIXED
   PERCENT
+}
+
+/// How a promo reaches the customer.
+enum PromoDistribution {
+  /// Applied automatically at checkout to every eligible purchase — the
+  /// "diskon manual" the admin sets without issuing any code.
+  AUTO
+  /// Must be claimed by the customer (or its code typed) at checkout.
+  VOUCHER
+}
+
+/// Where a voucher may be SEEN. This is a publishing control, not a security
+/// one: it decides only whether the promo appears on /promo and on the
+/// claimable-voucher shelf. A HIDDEN voucher is still fully usable — its code
+/// can be typed at checkout and every other rule still applies. Security is
+/// never a function of this column: the checkout validates the code server-side
+/// regardless of visibility, so "hidden" cannot be bypassed by tampering with a
+/// request, and knowing a public voucher's row is not an advantage either.
+enum PromoVisibility {
+  /// Shown on /promo and claimable from "Voucher Saya".
+  PUBLIC
+  /// Not listed anywhere the customer can browse. Usable only by typing its code
+  /// at checkout — the operator distributes the code out-of-band.
+  HIDDEN
+}
+
+/// What a promo applies to. A promo with scope ALL needs no target rows;
+/// CATEGORY / GAME / VARIANT resolve the targets through the *_id columns.
+enum PromoScope {
+  /// Every product in the catalogue.
+  ALL
+  /// Everything in one Category (all games, or all pulsa).
+  CATEGORY
+  /// One Game, e.g. Mobile Legends (all of its products).
+  GAME
+  /// One Product, e.g. by.U pulsa (all of its nominals).
+  PRODUCT
+  /// One exact nominal: 570 Diamonds, or Pulsa Telkomsel 10.000.
+  VARIANT
+}
+
+/// Which users are allowed to claim a voucher. Determines the eligibility
+/// check at claim time and the label the customer sees.
+enum VoucherAudience {
+  /// Everybody — no conditions beyond the claim quota and the active window.
+  ALL_USERS
+  /// Never completed a SUCCESS order. Counted at claim time, not at sign-up.
+  NEW_CUSTOMER
+  /// Has at least `minCompletedOrders` completed orders.
+  LOYAL_CUSTOMER
+}
+
+/// State of one user's claim on a voucher. A row here IS ownership: the
+/// customer's "Voucher Saya" list is these rows, and checkout reads one by id.
+enum ClaimStatus {
+  /// Claimed, not used yet.
+  ACTIVE
+  /// Consumed by an order. Kept (not deleted) so the history stays queryable
+  /// and a refund can tell whether the voucher should be returned.
+  REDEEMED
+  /// Admin revoked it, or the voucher's audience/quota changed. Never spendable.
+  VOIDED
 }

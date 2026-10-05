@@ -7,7 +7,7 @@
 // target. A router.push would keep the already-rendered RSC payload in the
 // router cache, so the header would still show "Masuk" until a manual refresh.
 //
-// `next` is validated with safeNextPath() before use — see that function for
+// `next` is validated with safeNextPath() before use, see that function for
 // why `startsWith("/")` alone is not enough.
 // ============================================================================
 import { useState } from "react";

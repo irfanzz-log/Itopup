@@ -1,5 +1,5 @@
 // ============================================================================
-// POST /api/orders — create an order.
+// POST /api/orders, create an order.
 //
 // The security-critical route of the whole app. Its contract:
 //
@@ -8,7 +8,7 @@
 //   * same-origin (CSRF) + rate limited per user AND per IP,
 //   * `.strict()` validation, so a client that sends `price`, `total`,
 //     `providerCode` or `status` is REJECTED rather than having its numbers
-//     silently ignored — a silent ignore hides a broken or hostile client,
+//     silently ignored, a silent ignore hides a broken or hostile client,
 //   * every amount is recomputed from the database by order.service.
 //
 // Duplicate submissions are absorbed by the idempotency key: a double click or a
@@ -22,6 +22,8 @@ import { presets } from "@/lib/rate-limit.js";
 import { checkoutSchema, parse } from "@/lib/validation.js";
 import { requireAuth } from "@/lib/auth/guards.js";
 import { createOrder } from "@/services/order.service.js";
+import { isCheckoutPaused } from "@/services/announcement.service.js";
+import { AppError } from "@/lib/errors.js";
 
 export const POST = route(async (req, _ctx, { log }) => {
   const ctx = requestContext(req);
@@ -40,6 +42,14 @@ export const POST = route(async (req, _ctx, { log }) => {
   });
 
   const input = parse(checkoutSchema, body);
+
+  // Maintenance gate. Checked AFTER auth and validation so the owner of the
+  // switch is identified, but BEFORE createOrder so no order row is written
+  // during a pause. An AppSetting lookup failure resolves to "not paused"
+  // (see isCheckoutPaused), so a DB hiccup cannot stop trade on its own.
+  if (await isCheckoutPaused()) {
+    throw new AppError("ITP_CHECKOUT_PAUSED");
+  }
 
   const { order, reused, instructions } = await createOrder({
     userId: user.id,

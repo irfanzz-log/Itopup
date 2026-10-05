@@ -1,5 +1,5 @@
 // ============================================================================
-// /member/orders — transaction history.
+// /member/orders, transaction history.
 //
 // Filters live in the QUERY STRING, so the list is server-rendered, shareable,
 // and works without JavaScript. `page` and `status` are parsed defensively: an
@@ -14,7 +14,7 @@ import StatusBadge from "@/components/ui/StatusBadge";
 import Pagination, { ResultCount } from "@/components/ui/Pagination";
 import { EmptyState } from "@/components/ui/primitives";
 import { formatIDR, formatDateTime } from "@/lib/format";
-import { ORDER_STATUS, ORDER_STATUS_LABEL } from "@/lib/constants";
+import { ORDER_STATUS, CUSTOMER_ORDER_STATUS } from "@/lib/constants";
 
 export const dynamic = "force-dynamic";
 
@@ -24,13 +24,29 @@ export const metadata = {
 };
 
 /** Statuses offered as filters, in lifecycle order. */
+// WHAT THE CUSTOMER SEES.
+//
+// The database holds a fine-grained lifecycle (PENDING_PAYMENT →
+// PAYMENT_PROCESSING → PAID → PROCESSING → SUCCESS …), but every one of those
+// intermediate steps is an internal distinction. Showing "Pembayaran Diproses"
+// next to "Diproses" next to "Dibayar" only made customers wonder which one
+// meant their top-up was actually happening. The customer only needs to know:
+// do they still owe money, is the machine working on it, or is it done?
+//
+// So the filter row below collapses the whole machine into four ideas:
+//
+//   Menunggu Pembayaran, we are waiting on the customer's money
+//   Diproses, paid, and the provider is fulfilling it
+//   Selesai, finished, successfully or otherwise
+//
+// `PAYMENT_PROCESSING` is deliberately NOT a filter: it lasts seconds, it is
+// indistinguishable from PROCESSING to a buyer, and by the time the customer
+// reloads the page it has already moved on.
 const FILTERS = [
   ORDER_STATUS.PENDING_PAYMENT,
-  ORDER_STATUS.PAID,
   ORDER_STATUS.PROCESSING,
   ORDER_STATUS.SUCCESS,
   ORDER_STATUS.FAILED,
-  ORDER_STATUS.EXPIRED,
 ];
 
 export default async function MemberOrdersPage({ searchParams }) {
@@ -75,7 +91,7 @@ export default async function MemberOrdersPage({ searchParams }) {
             key={value}
             href={`/member/orders?status=${value}`}
             active={status === value}
-            label={ORDER_STATUS_LABEL[value]}
+            label={CUSTOMER_ORDER_STATUS[value]}
           />
         ))}
       </nav>
@@ -130,7 +146,7 @@ export default async function MemberOrdersPage({ searchParams }) {
                       {formatIDR(order.total)}
                     </td>
                     <td className="px-4 py-3">
-                      <StatusBadge status={order.status} />
+                      <StatusBadge status={order.status} audience="customer" />
                     </td>
                   </tr>
                 ))}
@@ -138,7 +154,7 @@ export default async function MemberOrdersPage({ searchParams }) {
             </table>
           </div>
 
-          {/* Mobile cards — the same data, because a horizontally scrolling table
+          {/* Mobile cards, the same data, because a horizontally scrolling table
               on a phone is where support tickets come from. */}
           <ul className="space-y-3 lg:hidden">
             {items.map((order) => (
@@ -151,7 +167,7 @@ export default async function MemberOrdersPage({ searchParams }) {
                       </p>
                       <p className="mt-0.5 truncate text-xs text-foreground-subtle">{order.gameName}</p>
                     </div>
-                    <StatusBadge status={order.status} />
+                    <StatusBadge status={order.status} audience="customer" />
                   </div>
                   <div className="mt-3 flex items-end justify-between gap-3">
                     <span className="font-mono text-xs text-foreground-subtle">{order.invoice}</span>

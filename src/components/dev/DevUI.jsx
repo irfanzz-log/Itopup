@@ -2,7 +2,7 @@
 // Shared dev UI pieces.
 //
 // The dev area renders a lot of tabular, numeric data. These primitives exist so
-// a stat card, a table shell and a section heading look identical everywhere —
+// a stat card, a table shell and a section heading look identical everywhere,
 // and so a number is never formatted by hand in a page (that is where thousand
 // separators go missing on the admin screen finance reads).
 // ============================================================================
@@ -27,7 +27,7 @@ export function PageHeader({ title, description = null, children = null }) {
 /**
  * A single headline number.
  *
- * `tone` colours the value only — never the whole card, so a grid of stats does
+ * `tone` colours the value only, never the whole card, so a grid of stats does
  * not turn into a wall of colour where the eye cannot find the outlier.
  */
 export function StatCard({ label, value, hint = null, tone = "neutral", href = null }) {
@@ -142,7 +142,7 @@ export function Td({ children, align = "left", className = "" }) {
   );
 }
 
-/** Rupiah cell — tabular numerals so columns line up. */
+/** Rupiah cell, tabular numerals so columns line up. */
 export function Money({ value, className = "" }) {
   return <span className={`tabular-nums ${className}`}>{formatIDR(value)}</span>;
 }

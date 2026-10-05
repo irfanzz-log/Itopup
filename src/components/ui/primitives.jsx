@@ -47,7 +47,7 @@ function AlertIcon({ tone }) {
   );
 }
 
-/** Empty state — every list in the app renders one instead of a blank region. */
+/** Empty state, every list in the app renders one instead of a blank region. */
 export function EmptyState({ title, description, action = null, icon = "box" }) {
   return (
     <div className="flex flex-col items-center justify-center rounded-[var(--radius-card)] border border-dashed border-border bg-surface px-6 py-14 text-center">

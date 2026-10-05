@@ -276,6 +276,28 @@
   .field-error {
     @apply border-danger-border focus:border-danger-fg focus:ring-danger-fg/25;
   }
+
+  /* ── Select controls ─────────────────────────────────────────────────── */
+  /* A native <select> renders its own chevron and button geometry, which on
+     mobile Chrome/Safari looks like a different control from the input beside
+     it — and its popup appears detached from the field. Removing the native
+     appearance and painting our own chevron makes it read as the same control
+     as the text fields, and keeps the box the popup is anchored to where the
+     operator tapped. `appearance: none` also kills the mobile inset shadow. */
+  select.field {
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='%2364748b'%3E%3Cpath fill-rule='evenodd' d='M5.23 7.21a.75.75 0 011.06.02L10 11.06l3.71-3.83a.75.75 0 111.08 1.04l-4.25 4.39a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z' clip-rule='evenodd'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.6rem center;
+    background-size: 1.25rem;
+    /* Room for the chevron so a long option label never runs under it. */
+    padding-right: 2.25rem;
+  }
+  .dark select.field {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='%2394a3b8'%3E%3Cpath fill-rule='evenodd' d='M5.23 7.21a.75.75 0 011.06.02L10 11.06l3.71-3.83a.75.75 0 111.08 1.04l-4.25 4.39a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z' clip-rule='evenodd'/%3E%3C/svg%3E");
+  }
+
   .label {
     @apply mb-1.5 block text-sm font-medium text-foreground;
   }

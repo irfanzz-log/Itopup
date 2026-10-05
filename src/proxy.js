@@ -1,5 +1,5 @@
 // ============================================================================
-// Proxy (formerly "middleware" — renamed in Next.js 16).
+// Proxy (formerly "middleware", renamed in Next.js 16).
 //
 // SCOPE, DELIBERATELY LIMITED:
 // this runs on the edge-ish runtime before rendering and cannot reach the
@@ -8,7 +8,7 @@
 // an authorization decision.
 //
 // The real gates are:
-//   * src/app/(member)/layout.jsx and src/app/dev/layout.jsx — server
+//   * src/app/(member)/layout.jsx and src/app/dev/layout.jsx: server
 //     components that verify the session against the database and the role,
 //   * requireAuth / requireRole inside every route handler.
 //
@@ -36,7 +36,7 @@ export function proxy(request) {
   if (hasSession) return NextResponse.next();
 
   // Preserve the intended destination so checkout state survives the login
-  // round trip. Only the path+search is kept — never an absolute URL, which
+  // round trip. Only the path+search is kept, never an absolute URL, which
   // would make this an open redirect.
   const loginUrl = new URL("/login", request.url);
   loginUrl.searchParams.set("next", `${pathname}${search}`);

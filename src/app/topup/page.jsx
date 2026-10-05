@@ -1,12 +1,12 @@
 // ============================================================================
-// /topup — the service hub.
+// /topup, the service hub.
 //
 // One page that answers "what can I top up here", grouped by category. Each
 // category links to its own landing page; this page does not try to be a
 // catalogue of every nominal.
 // ============================================================================
 import Link from "next/link";
-import { CategoryCard, GameCard, SectionHeading } from "@/components/catalog/CatalogCards";
+import { CategoryCard, EntryCard, SectionHeading } from "@/components/catalog/CatalogCards";
 import { EmptyState } from "@/components/ui/primitives";
 import { listCategories, listGamesGrouped } from "@/services/catalog.service";
 
@@ -25,8 +25,8 @@ export default async function TopupHubPage() {
     listGamesGrouped().catch(() => []),
   ]);
 
-  const countByKind = new Map(grouped.map((c) => [c.kind, c.games.length]));
-  const withGames = grouped.filter((category) => category.games.length > 0);
+  const countByKind = new Map(grouped.map((c) => [c.kind, (c.entries ?? c.games ?? []).length]));
+  const withGames = grouped.filter((category) => (category.entries ?? category.games ?? []).length > 0);
 
   return (
     <div className="container-page py-10 sm:py-12">
@@ -76,8 +76,10 @@ export default async function TopupHubPage() {
                 href={category.path}
               />
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-                {category.games.map((game) => (
-                  <GameCard key={game.id} game={game} categoryPath={category.slug} />
+                {(category.entries ?? category.games ?? []).map((entry) => (
+                  // `entries` is the same shape for every category: a game, or
+                  // for pulsa an operator. See listGamesGrouped.
+                  <EntryCard key={entry.id} entry={entry} />
                 ))}
               </div>
             </section>

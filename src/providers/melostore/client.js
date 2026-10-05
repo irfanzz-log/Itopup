@@ -1,5 +1,5 @@
 // ============================================================================
-// Melostore H2H — HTTP client.
+// Melostore H2H: HTTP client.
 //
 // Transport concerns only: timeouts, retry policy, error classification,
 // credential loading and redaction. Endpoint paths live with the operation that
@@ -32,7 +32,7 @@ const BACKOFF_BASE_MS = 400;
  * Load credentials from the environment.
  *
  * Documented scheme: two headers, `X-API-Key` and `X-Secret-Key`. There is no
- * username in the documented auth, so `MELOSTORE_USERNAME` is not consulted —
+ * username in the documented auth, so `MELOSTORE_USERNAME` is not consulted:
  * inventing a third factor would be worse than ignoring an unused variable.
  *
  * @returns {{ baseUrl: string|null, apiKey: string|null, secret: string|null,
@@ -60,7 +60,7 @@ export function isConfigured() {
 
 /**
  * Which configuration is missing, for the admin settings page.
- * Returns env var NAMES only — never values, never partial values.
+ * Returns env var NAMES only: never values, never partial values.
  */
 export function configurationGaps() {
   const creds = loadCredentials();
@@ -90,7 +90,7 @@ function safeUrl(url) {
   }
 }
 
-/** Truncate a response body for logging — long bodies must not flood the log. */
+/** Truncate a response body for logging: long bodies must not flood the log. */
 function safeBody(text, limit = 400) {
   if (typeof text !== "string") return undefined;
   return text.length > limit ? `${text.slice(0, limit)}…[truncated]` : text;
@@ -98,7 +98,7 @@ function safeBody(text, limit = 400) {
 
 /**
  * Classify a transport-level failure. HTTP semantics are universal, so this is
- * not guesswork — but Melostore may return application-level error codes inside
+ * not guesswork, but Melostore may return application-level error codes inside
  * a 200 response, which `classifyPayload` handles once documented.
  */
 function classifyHttpStatus(status) {
@@ -158,7 +158,7 @@ export function classifyPayload(body) {
     const category = String(body.error.category || "");
     if (category === "not_found") {
       // An unknown account is a REJECTED request, not an outage. The caller
-      // must not report it as a provider failure — and must not retry it.
+      // must not report it as a provider failure, and must not retry it.
       return {
         code: PROVIDER_ERROR.REJECTED,
         retryable: false,
@@ -185,7 +185,7 @@ function parseBody(text, contentType) {
     }
   }
   // Melostore may answer form-encoded or plain text. Parsing is deferred until
-  // the documented content type is known — returning the raw string is honest.
+  // the documented content type is known: returning the raw string is honest.
   return text;
 }
 
@@ -197,7 +197,7 @@ function sleep(ms) {
  * Resolve how long to wait before retrying a failed request.
  *
  * `Retry-After` is documented as seconds (RFC 9110) and is what Melostore sends
- * on a 429 — e.g. `retry-after: 19` when the pricelist bucket is exhausted. A
+ * on a 429, e.g. `retry-after: 19` when the pricelist bucket is exhausted. A
  * date form is also legal, so both are handled. `fallbackMs` is used when the
  * header is absent or unparseable.
  *
@@ -224,7 +224,7 @@ function retryDelayMs(retryAfterHeader, fallbackMs) {
  * Perform one provider call.
  *
  * @param {object} input
- * @param {string} input.path            path relative to baseUrl — TODO(melostore) per operation
+ * @param {string} input.path            path relative to baseUrl. TODO(melostore) per operation
  * @param {'GET'|'POST'} [input.method]
  * @param {Record<string, unknown>} [input.payload]   request body / query
  * @param {boolean} [input.idempotent]   whether a retry is safe
@@ -249,7 +249,7 @@ export async function call({ path, method = "POST", payload = null, idempotent =
   try {
     auth = authorizeRequest({ method, url, payload });
   } catch (err) {
-    // Missing credentials — a configuration problem, not a provider failure, so
+    // Missing credentials: a configuration problem, not a provider failure, so
     // it is obvious in the admin UI rather than looking like an outage.
     return providerErr(PROVIDER_ERROR.NOT_CONFIGURED, err?.message || "Kredensial provider tidak lengkap.", {
       retryable: false,

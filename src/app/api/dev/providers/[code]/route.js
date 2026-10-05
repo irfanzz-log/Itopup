@@ -1,14 +1,14 @@
 // ============================================================================
-// POST /api/dev/providers/[code] — provider operations.
+// POST /api/dev/providers/[code], provider operations.
 //
 // Actions:
-//   sync_catalog  — pull the pricelist into the database (the only way products
+//   sync_catalog, pull the pricelist into the database (the only way products
 //                   get created; nothing is hardcoded in the frontend)
-//   dry_run       — same, but writes nothing. This is the action an operator
+//   dry_run, same, but writes nothing. This is the action an operator
 //                   should reach for first, because a bad mapping is silent
 //                   otherwise.
-//   sync_balance  — refresh the cached prepaid balance
-//   test          — credential + reachability check, no side effects
+//   sync_balance, refresh the cached prepaid balance
+//   test, credential + reachability check, no side effects
 //
 // All are staff-only, rate-limited, and audited. The provider credentials never
 // leave the server: the response carries counts and diagnostics, never a key.
@@ -56,7 +56,7 @@ export const POST = route(async (req, ctx, { log }) => {
     case "dry_run": {
       const dryRun = action === "dry_run";
 
-      // A dry run must NOT require a configured provider? It does — there is
+      // A dry run must NOT require a configured provider? It does, there is
       // nothing to fetch without credentials. Report that clearly.
       if (!provider.isConfigured()) {
         const gaps = provider.configurationGaps();

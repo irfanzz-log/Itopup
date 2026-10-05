@@ -1,7 +1,7 @@
 // ============================================================================
 // Site footer.
 //
-// Static content only — no data fetching, so it can render in every error and
+// Static content only, no data fetching, so it can render in every error and
 // loading state without a database.
 // ============================================================================
 import Link from "next/link";
@@ -120,7 +120,7 @@ function CheckDot() {
   );
 }
 
-/** WhatsApp icon inline — kept here so the footer stays self-contained
+/** WhatsApp icon inline, kept here so the footer stays self-contained
  * and no extra asset is fetched for a single link. */
 function WhatsAppIcon() {
   return (

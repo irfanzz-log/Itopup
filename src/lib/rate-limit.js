@@ -2,15 +2,15 @@
 // Rate limiting.
 //
 // Two backends behind one interface:
-//   * in-memory (default) — correct for a single instance; explicitly NOT
+//   * in-memory (default): correct for a single instance; explicitly NOT
 //     multi-instance safe, which is why the admin settings page reports which
 //     backend is active.
-//   * Upstash-compatible REST (`RATE_LIMIT_URL` + `RATE_LIMIT_TOKEN`) — atomic
+//   * Upstash-compatible REST (`RATE_LIMIT_URL` + `RATE_LIMIT_TOKEN`): atomic
 //     INCR + PEXPIRE across instances.
 //
 // Failure policy is per preset, not global. If the external store is
-// unreachable, auth-critical buckets FAIL CLOSED (deny) — an outage must not
-// silently disable brute-force protection — while ordinary buckets fail open so
+// unreachable, auth-critical buckets FAIL CLOSED (deny): an outage must not
+// silently disable brute-force protection, while ordinary buckets fail open so
 // a limiter outage cannot take down the whole site.
 // ============================================================================
 import { AppError } from "./errors.js";
@@ -29,6 +29,10 @@ export const presets = {
   // behind it, while credential spraying stays capped. Fails closed.
   loginIp: { limit: intFromEnv("RL_LOGIN_IP", 40), windowMs: WINDOW_MS, failClosed: true },
   register: { limit: intFromEnv("RL_REGISTER", 5), windowMs: WINDOW_MS, failClosed: true },
+  // OTP verification is the guess surface for a 6-digit code, so this is the
+  // tightest human-facing limit. Fails closed: an unverifiable burst is better
+  // than a brute-forced account.
+  otp: { limit: intFromEnv("RL_OTP", 10), windowMs: WINDOW_MS, failClosed: true },
   // Account validation costs a provider call, so it is the most attractive
   // endpoint to abuse. Two buckets: per session and per IP.
   validate: { limit: intFromEnv("RL_VALIDATE", 20), windowMs: WINDOW_MS, failClosed: false },
@@ -82,7 +86,7 @@ function memoryCheck(key, { limit, windowMs }) {
 
 // ── External (Upstash-compatible REST) backend ──────────────────────────────
 // One HTTP round trip per check: INCR the counter, set the TTL only if absent,
-// read the remaining TTL — all in a single pipeline so the three commands
+// read the remaining TTL: all in a single pipeline so the three commands
 // cannot interleave with another instance's.
 async function remoteCheck(key, { limit, windowMs }) {
   const url = process.env.RATE_LIMIT_URL;

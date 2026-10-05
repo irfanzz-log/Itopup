@@ -1,8 +1,8 @@
 // ============================================================================
-// POST /api/topup/validate — verify a customer account against the provider.
+// POST /api/topup/validate, verify a customer account against the provider.
 //
 // Browsing requires no login (a visitor must be able to check their ID before
-// signing up), so this route is public — and therefore the most attractive
+// signing up), so this route is public, and therefore the most attractive
 // endpoint in the app to abuse, because every call costs a provider request.
 // It is rate limited on two axes (IP and session) and the answer is cached
 // server-side for a short window, so hammering it cannot drain provider quota.

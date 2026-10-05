@@ -13,7 +13,7 @@ describe("midtrans env wiring", () => {
     const c = midtransConfig();
     expect(c.merchantId).toBe("M001");
     expect(c.serverKey).toBe("SB-test");
-    expect(c.baseUrl).toBe("https://app.midtrans.com");
+    expect(c.baseUrl).toBe("https://api.midtrans.com");
     expect(c.isProduction).toBe(true);
     expect(c.enabledPayments).toEqual(["qris", "bca_va"]);
     expect(midtransConfig().clientKey ?? "not-read-by-server").toBe("not-read-by-server");
@@ -21,22 +21,21 @@ describe("midtrans env wiring", () => {
   it("sandbox by default when MIDTRANS_IS_PRODUCTION unset", async () => {
     // loadEnv() runs at import time and may have pulled the placeholder values
     // from .env.dev into process.env, so every Midtrans var is cleared by hand
-    // before this assertion — otherwise a "not configured" test silently
+    // before this assertion, otherwise a "not configured" test silently
     // passes against leftover placeholder values.
     const { clearEnvCache } = await import("@/lib/env.server.js");
     clearEnvCache();
     // `""` not `delete`: loadEnv() re-fills a deleted variable from .env.test on
     // first import, while an empty string survives it and env.server.js
-    // normalises "" to undefined — the honest "unset" state.
+    // normalises "" to undefined, the honest "unset" state.
     process.env.MIDTRANS_IS_PRODUCTION = "";
     process.env.MIDTRANS_SERVER_KEY = "";
     process.env.MIDTRANS_MERCHANT_ID = "";
     process.env.MIDTRANS_CLIENT_KEY = "";
     process.env.MIDTRANS_ENABLED_PAYMENTS = "";
-    process.env.MIDTRANS_FINISH_URL = "";
     vi.resetModules();
     const { midtransConfig } = await import("@/providers/payment/midtrans/index.js");
-    expect(midtransConfig().baseUrl).toBe("https://app.sandbox.midtrans.com");
+    expect(midtransConfig().baseUrl).toBe("https://api.sandbox.midtrans.com");
     expect(midtransConfig().serverKey).toBeNull();
   });
 });

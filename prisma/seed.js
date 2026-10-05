@@ -137,18 +137,22 @@ async function main() {
     log(`categories: ${Object.keys(categoryIdByKind).length}`);
 
     // ── 2. Games / services ────────────────────────────────────────────────
-    // Which category each seeded game belongs to. Keyed by SLUG, never by
-    // display name: a name can be renamed from the admin panel, and a slug is
-    // what the provider mapper and the /topup/[category]/[game] route use.
-    const gameCategoryBySlug = {
-      "mobile-legends": "GAME",
-      "pubg-mobile": "GAME",
-      "free-fire": "GAME",
-      codm: "GAME",
-      roblox: "GAME",
-      "genshin-impact": "GAME",
-      pulsa: "PULSA",
-    };
+    // Which category each seeded game belongs to. Derived from the seed itself
+    // rather than a hand-kept list: a list written here silently drifts from
+    // GAME_SEED — that is how `efootball` ended up listed in the catalogue but
+    // skipped by the seed, leaving the game page showing nothing to buy. The
+    // pulsa game is the one entry that is not a GAME, so it is named explicitly.
+    const gameCategoryBySlug = Object.fromEntries(
+      GAME_SEED.map((game) => [game.slug, game.slug === "pulsa" ? "PULSA" : "GAME"])
+    );
+
+    // A game in the seed with no category is a misconfiguration, not a skip.
+    // Failing here is what keeps the catalogue and the seeded products honest.
+    for (const game of GAME_SEED) {
+      if (!gameCategoryBySlug[game.slug]) {
+        throw new Error(`Game seed "${game.slug}" tidak memiliki kategori.`);
+      }
+    }
 
     const gameIdBySlug = {};
 
@@ -175,6 +179,7 @@ async function main() {
           description: game.description,
           inputFields: game.inputFields,
           supportsValidation: game.supportsValidation,
+          needsGameLogin: Boolean(game.needsGameLogin),
           isPopular: game.popular,
           sortOrder: game.sortOrder,
           isActive: true,
@@ -187,6 +192,7 @@ async function main() {
           description: game.description,
           inputFields: game.inputFields,
           supportsValidation: game.supportsValidation,
+          needsGameLogin: Boolean(game.needsGameLogin),
           isPopular: game.popular,
           sortOrder: game.sortOrder,
         },
@@ -246,8 +252,11 @@ async function main() {
 
           // The selling price is DERIVED, never typed twice. Changing the markup
           // in src/config/pricing.js and re-running the seed reprices everything
-          // consistently.
-          const sellingPrice = entry.sellingPrice ?? sellingPriceFromCost(costPrice);
+          // consistently. Airtime (PULSA) uses a fixed spread instead of a
+          // percentage, so the category kind is passed through.
+          const kind = gameCategoryBySlug[gameSlug];
+          const sellingPrice =
+            entry.sellingPrice ?? sellingPriceFromCost(costPrice, { kind });
 
           // A variant may be defined but NOT sellable — e.g. eFootball, whose
           // provider flow demands the customer's game password. The catalogue

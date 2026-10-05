@@ -1,5 +1,5 @@
 // ============================================================================
-// /member/profile — profile and security.
+// /member/profile, profile and security.
 //
 // The forms are client components; this page is a server component so the
 // session is resolved on the server and only non-sensitive fields are handed to

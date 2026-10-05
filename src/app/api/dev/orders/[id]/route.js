@@ -1,7 +1,7 @@
 // ============================================================================
-// POST /api/dev/orders/[id] — staff actions on an order.
+// POST /api/dev/orders/[id], staff actions on an order.
 //
-// ONE ROUTE, EXPLICIT ACTIONS — not a REST PATCH.
+// ONE ROUTE, EXPLICIT ACTIONS, not a REST PATCH.
 //
 // Each action here is a business decision with its own preconditions, its own
 // audit entry and its own side effects. Collapsing them into a generic
@@ -11,10 +11,10 @@
 // status write would mark it PAID and never send the top-up.
 //
 // Actions:
-//   confirm_payment  — money arrived → settle + dispatch   (SUPERADMIN or DEV)
-//   reject_payment   — money never arrived → payment FAILED
-//   reconcile        — ask the provider for the real status of a stuck order
-//   cancel           — staff cancels an unpaid order
+//   confirm_payment, money arrived → settle + dispatch   (SUPERADMIN or DEV)
+//   reject_payment, money never arrived → payment FAILED
+//   reconcile, ask the provider for the real status of a stuck order
+//   cancel, staff cancels an unpaid order
 //
 // Order of operations is the security control: staff role → CSRF/rate limit →
 // validated body → ownership/state preconditions → side effect → audit.
@@ -33,12 +33,26 @@ import { ORDER_STATUS } from "@/lib/constants.js";
 
 const schema = z
   .object({
-    action: z.enum(["confirm_payment", "reject_payment", "reconcile", "cancel", "retry_dispatch"]),
+    action: z.enum([
+      "confirm_payment",
+      "reject_payment",
+      "reconcile",
+      "sync_payments",
+      "cancel",
+      "retry_dispatch",
+      "refund",
+    ]),
     /// What actually arrived. Optional: defaults to the amount requested.
     paidAmount: z.coerce.number().int().min(0).max(1_000_000_000).optional(),
     reason: z.string().trim().max(300).optional(),
   })
-  .strict();
+  .strict()
+  // A refund is a money movement, so it cannot be silent. The amount and the
+  // reason are what the audit trail needs to be answerable later.
+  .refine((v) => v.action !== "refund" || Boolean(v.reason), {
+    message: "Alasan pengembalian wajib diisi.",
+    path: ["reason"],
+  });
 
 export const POST = route(async (req, ctx, { log }) => {
   const requestCtx = requestContext(req);
@@ -88,6 +102,20 @@ export const POST = route(async (req, ctx, { log }) => {
         },
         { req }
       );
+    }
+
+    // ── Ask the payment gateway what really happened. ─────────────────────
+    // Mirror of `reconcile` for the PAYMENT side: pull the real status of
+    // every open payment and settle whatever Midtrans has already collected.
+    case "sync_payments": {
+      const { reconcilePendingPayments } = await import("@/services/payment.service.js");
+      const result = await reconcilePendingPayments({
+        limit: 100,
+        source: "MANUAL",
+        actor,
+        request: requestCtx,
+      });
+      return ok(result, { req });
     }
 
     // ── Money never arrived. ──────────────────────────────────────────────
@@ -180,6 +208,42 @@ export const POST = route(async (req, ctx, { log }) => {
 
       const result = await dispatchOrder({ orderId, request: requestCtx });
       return ok(result, { req });
+    }
+
+    // ── Record a manual refund. ──────────────────────────────────────────
+    //
+    // STATUS ONLY, this moves no money. The top-up provider does not expose a
+    // refund call for these products, and Midtrans refunds are done in the
+    // merchant dashboard where the transfer is actually reversed. This is the
+    // bookkeeping that keeps the order row consistent with the bank statement
+    // after an operator has sent the money back by hand.
+    //
+    // Allowed from the whole paid-and-beyond arc: PAID (paid, never dispatched),
+    // PROCESSING (dispatched, unresolved), FAILED (provider refused), and
+    // SUCCESS (delivered, but refunded as goodwill). Each of those means
+    // something different to the operator, and the audit log keeps the reason.
+    case "refund": {
+      if (order.status === ORDER_STATUS.REFUND) {
+        throw new AppError("ITP_INVALID_STATE_TRANSITION", "Transaksi ini sudah dikembalikan.");
+      }
+      if (order.status === ORDER_STATUS.EXPIRED || order.status === ORDER_STATUS.CANCELLED) {
+        throw new AppError(
+          "ITP_INVALID_STATE_TRANSITION",
+          "Transaksi yang kedaluwarsa atau dibatalkan tidak pernah dibayar. Tidak ada yang dikembalikan."
+        );
+      }
+
+      await transitionOrder({
+        orderId,
+        from: order.status,
+        to: ORDER_STATUS.REFUND,
+        reason,
+        actor,
+        request: requestCtx,
+        metadata: { refundRecordedManually: true },
+      });
+
+      return ok({ refunded: true, status: ORDER_STATUS.REFUND }, { req });
     }
 
     default:

@@ -1,9 +1,9 @@
 // ============================================================================
-// POST /api/payment/confirm — the customer says "I have transferred".
+// POST /api/payment/confirm, the customer says "I have transferred".
 //
 // IMPORTANT: this does NOT mark the order paid. It only moves the payment to
 // PROCESSING and leaves a note for the operator. A customer must never be able
-// to settle their own order by asserting that they paid — that would be a
+// to settle their own order by asserting that they paid, that would be a
 // self-service "give me a free top-up" endpoint.
 //
 // The money is confirmed by an operator through /api/dev/orders/[id], which

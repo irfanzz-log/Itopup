@@ -11,7 +11,7 @@
 // ============================================================================
 import Link from "next/link";
 import {
-  CategoryCard, GameCard, SectionHeading,
+  CategoryCard, EntryCard, GameCard, SectionHeading,
 } from "@/components/catalog/CatalogCards";
 import { EmptyState } from "@/components/ui/primitives";
 import {
@@ -19,15 +19,17 @@ import {
 } from "@/services/catalog.service";
 import { listActivePromos } from "@/services/promo.service";
 import PromoStrip from "@/components/promo/PromoStrip";
+import JsonLd from "@/components/seo/JsonLd";
+import { websiteJsonLd } from "@/lib/json-ld.js";
 
 // Catalog prices and availability change; the header reads the session. Both
 // make this page request-time, not build-time.
 export const dynamic = "force-dynamic";
 
 export const metadata = {
-  title: "Itopup - Top Up Game, Pulsa & DANA",
+  title: "Itopup - Top Up Game & Pulsa",
   description:
-    "Top up Mobile Legends, Free Fire, PUBG Mobile, Genshin Impact, Roblox, CODM, pulsa semua operator, dan saldo DANA. Proses otomatis 24 jam dengan harga transparan.",
+    "Top up Mobile Legends, Free Fire, PUBG Mobile, Genshin Impact, Roblox, CODM, dan pulsa semua operator Indonesia. Proses otomatis 24 jam dengan harga transparan.",
   alternates: { canonical: "/" },
 };
 
@@ -75,6 +77,12 @@ export default async function HomePage() {
 
   return (
     <>
+      <JsonLd
+        data={websiteJsonLd({
+          name: "ITOPUP",
+          description: "Platform top up game dan pulsa dengan proses otomatis 24 jam.",
+        })}
+      />
       {/* ── Hero ──────────────────────────────────────────────────────────── */}
       <section className="relative overflow-hidden border-b border-border bg-surface">
         <div
@@ -92,7 +100,7 @@ export default async function HomePage() {
             </h1>
             <p className="mt-4 max-w-xl text-base leading-relaxed text-foreground-muted sm:text-lg">
               ITOPUP memproses pesanan Anda secara otomatis. Masukkan User ID atau nomor
-              tujuan, pilih nominal, bayar, dan pesanan langsung diproses — tanpa perlu
+              tujuan, pilih nominal, lalu bayar. Pesanan langsung diproses tanpa perlu
               login akun game.
             </p>
             <div className="mt-7 flex flex-wrap items-center gap-3">
@@ -104,7 +112,7 @@ export default async function HomePage() {
               </Link>
             </div>
             <dl className="mt-9 grid max-w-lg grid-cols-3 gap-4">
-              <Stat label="Layanan" value={grouped.reduce((sum, c) => sum + c.games.length, 0)} />
+              <Stat label="Layanan" value={grouped.reduce((sum, c) => sum + (c.entries ?? c.games ?? []).length, 0)} />
               <Stat label="Kategori" value={categories.length} />
               <Stat label="Biaya layanan" value="Rp 0" plain />
             </dl>
@@ -149,7 +157,7 @@ export default async function HomePage() {
                 <CategoryCard
                   key={category.id}
                   category={{ ...category, path: `/topup/${category.slug}` }}
-                  count={category._count?.games ?? 0}
+                  count={category.entryCount ?? category._count?.games ?? 0}
                 />
               ))
             ) : (
@@ -164,9 +172,9 @@ export default async function HomePage() {
           </div>
         </section>
 
-        {/* ── Games, by category ─────────────────────────────────────────── */}
+        {/* ── Services, by category ──────────────────────────────────────── */}
         {grouped
-          .filter((category) => category.games.length > 0)
+          .filter((category) => (category.entries ?? []).length > 0)
           .map((category) => (
             <section key={category.kind} className="section pt-0">
               <SectionHeading
@@ -175,8 +183,8 @@ export default async function HomePage() {
                 href={category.path}
               />
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-                {category.games.slice(0, 6).map((game) => (
-                  <GameCard key={game.id} game={game} categoryPath={category.slug} />
+                {category.entries.slice(0, 6).map((entry) => (
+                  <EntryCard key={entry.id} entry={entry} />
                 ))}
               </div>
             </section>

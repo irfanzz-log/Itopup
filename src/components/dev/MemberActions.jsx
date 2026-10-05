@@ -115,7 +115,7 @@ export default function MemberActions({ memberId, memberName, status, role }) {
           lewat kanal yang aman.
         </p>
         <div className="mt-2 flex flex-wrap items-end gap-3">
-          <div className="min-w-[14rem] flex-1">
+          <div className="min-w-0 flex-1 sm:min-w-[14rem]">
             <label htmlFor="newPassword" className="label">Password baru</label>
             <input
               id="newPassword"
@@ -151,7 +151,7 @@ export default function MemberActions({ memberId, memberName, status, role }) {
           Hanya Super Admin yang dapat mengubah peran, dan tidak melebihi perannya sendiri.
         </p>
         <div className="mt-2 flex flex-wrap items-end gap-3">
-          <div className="w-48">
+          <div className="w-full sm:w-48">
             <label htmlFor="newRole" className="label">Peran</label>
             <select
               id="newRole"

@@ -1,5 +1,5 @@
 // ============================================================================
-// POST /api/dev/members/[id] — staff actions on a member account.
+// POST /api/dev/members/[id], staff actions on a member account.
 //
 // Same shape and same reasoning as /api/dev/orders/[id]: explicit named actions,
 // never a generic PATCH. Each one has a different precondition and a different
@@ -7,12 +7,12 @@
 // themselves is a privilege escalation.
 //
 // Actions:
-//   block          — suspend the account and kill its sessions  (DEV+)
-//   unblock        — restore access                             (DEV+)
-//   reset_password — set a new password, kill all sessions      (DEV+)
-//   change_role    — promote/demote                             (SUPERADMIN only)
+//   block, suspend the account and kill its sessions  (DEV+)
+//   unblock, restore access                             (DEV+)
+//   reset_password, set a new password, kill all sessions      (DEV+)
+//   change_role, promote/demote                             (SUPERADMIN only)
 //
-// A staff member may not act on THEMSELVES for block/role — locking yourself out
+// A staff member may not act on THEMSELVES for block/role, locking yourself out
 // is not a business operation.
 // ============================================================================
 import { route, ok, readJson, guardMutation, requestContext, bucket, parse } from "@/lib/api.js";
@@ -82,7 +82,7 @@ export const POST = route(async (req, ctx, { log }) => {
 
   switch (action) {
     case "block": {
-      // Refuse to block the last remaining superadmin — that is how a business
+      // Refuse to block the last remaining superadmin, that is how a business
       // loses access to its own admin panel.
       if (target.role === ROLES.SUPERADMIN) {
         const remaining = await prisma.user.count({

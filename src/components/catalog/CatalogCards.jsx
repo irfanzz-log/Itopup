@@ -93,6 +93,59 @@ export function GameCard({ game, categoryPath, className = "" }) {
   );
 }
 
+/**
+ * A card for any catalog entry, a game or, in PULSA, a phone operator.
+ *
+ * `entry` carries the resolved icon and href from the service, so this card
+ * does not need to know which kind it is rendering. See
+ * `listEntriesForCategory` for why PULSA lists products rather than games.
+ */
+export function EntryCard({ entry, className = "" }) {
+  return (
+    <Link
+      href={entry.href}
+      className={`card-interactive group flex flex-col items-center gap-3 p-4 text-center ${className}`}
+    >
+      <EntryArtwork entry={entry} />
+      <span className="min-w-0 w-full">
+        <span className="block truncate text-sm font-semibold text-foreground">{entry.name}</span>
+        {entry.subtitle ? (
+          <span className="mt-0.5 block truncate text-xs text-foreground-subtle">{entry.subtitle}</span>
+        ) : null}
+      </span>
+      <span className="mt-auto inline-flex items-center gap-1 text-xs font-semibold text-brand-600 opacity-0 transition-opacity group-hover:opacity-100 dark:text-brand-400">
+        Top Up
+        <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
+          <path strokeLinecap="round" strokeLinejoin="round" d="m9 18 6-6-6-6" />
+        </svg>
+      </span>
+    </Link>
+  );
+}
+
+/** Brand mark for an entry, with a branded-initials fallback. */
+export function EntryArtwork({ entry, className = "h-14 w-14 text-lg" }) {
+  if (entry.icon) {
+    return (
+      <img
+        src={entry.icon}
+        alt=""
+        className={`${className} rounded-xl object-cover`}
+        loading="lazy"
+        decoding="async"
+      />
+    );
+  }
+  return (
+    <span
+      className={`${className} flex items-center justify-center rounded-xl bg-gradient-to-br ${gradientFor(entry.slug || entry.name)} font-bold text-white`}
+      aria-hidden="true"
+    >
+      {initialsOf(entry.name)}
+    </span>
+  );
+}
+
 /** Section heading with an optional "see all" link. */
 export function SectionHeading({ title, description, href, linkLabel = "Lihat semua", className = "" }) {
   return (

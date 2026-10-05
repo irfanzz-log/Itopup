@@ -1,5 +1,5 @@
 // ============================================================================
-// POST /api/webhooks/payment/midtrans — Midtrans payment notification.
+// POST /api/webhooks/payment/midtrans, Midtrans payment notification.
 //
 // THE ORDER OF OPERATIONS IS THE SECURITY CONTROL:
 //   1. read the RAW body (the signature covers the exact bytes Midtrans sent),
@@ -11,7 +11,7 @@
 // learns the URL can POST {"transaction_status":"settlement"} and have top-up
 // credit released. Signature first, always.
 //
-// NOT session-guarded and NOT CSRF-guarded — machine-to-machine. The signature
+// NOT session-guarded and NOT CSRF-guarded, machine-to-machine. The signature
 // is the authentication. It fails closed: a genuine notification that fails
 // verification is recoverable via reconciliation; a forged one that passes is
 // not.
@@ -38,7 +38,7 @@ const MAX_CALLBACK_BYTES = 64 * 1024;
 export const POST = route(async (req, _ctx, { log, rid }) => {
   const ip = clientIp(req);
 
-  // Flood protection only — the signature is the real authentication. Fails
+  // Flood protection only, the signature is the real authentication. Fails
   // open, because dropping a provider retry loses money.
   await enforce([["webhook:payment", presets.webhook]]);
 
@@ -88,7 +88,7 @@ export const POST = route(async (req, _ctx, { log, rid }) => {
   // ── 3. Apply the status to the payment. ─────────────────────────────────
   // A PAID notification settles the order through settlePayment, which owns
   // the amount check and the dispatch to the top-up provider. Everything else
-  // is a status update on the Payment row — terminal failures must not leave
+  // is a status update on the Payment row, terminal failures must not leave
   // the order looking payable.
   const outcome = await applyPaymentNotification({ event, raw, log });
 
@@ -103,10 +103,18 @@ export const POST = route(async (req, _ctx, { log, rid }) => {
  * @returns {Promise<{ applied: boolean, retryable: boolean }>}
  */
 async function applyPaymentNotification({ event, raw, log }) {
-  // The payment is looked up by Midtrans's reference, which is OUR invoice —
+  // The payment is looked up by Midtrans's reference, which is OUR invoice,
   // never by an id from the body. This is the IDOR boundary for webhooks.
+  //
+  // `reference` alone is NOT a unique column: the constraint is
+  // @@unique([providerCode, reference]), because a manual payment and a
+  // Midtrans charge can share one invoice reference. Looking it up by
+  // `reference` alone raised PrismaClientValidationError at runtime (the
+  // compound is the only key on those two fields), and a `findFirst` would
+  // have been worse, it could settle the wrong provider's payment. The
+  // compound lookup is what makes this resolve to exactly one row.
   const payment = await prisma.payment.findUnique({
-    where: { reference: event.reference },
+    where: { providerCode_reference: { providerCode: "midtrans", reference: event.reference } },
     select: {
       id: true,
       orderId: true,
@@ -118,7 +126,7 @@ async function applyPaymentNotification({ event, raw, log }) {
   });
 
   if (!payment) {
-    // A notification for an order we have no record of. Log it and ack — a
+    // A notification for an order we have no record of. Log it and ack, a
     // retry will not create the order, and 200 stops Midtrans from looping.
     log.warn("midtrans.webhook_unknown_payment", { reference: event.reference });
     return { applied: false, retryable: false };
@@ -184,7 +192,7 @@ async function applyPaymentNotification({ event, raw, log }) {
     });
     return { applied: true, retryable: false };
   } catch (err) {
-    // A DB or dispatch failure is ours — Midtrans SHOULD retry.
+    // A DB or dispatch failure is ours, Midtrans SHOULD retry.
     log.error("midtrans.webhook_settle_failed", {
       reference: event.reference,
       orderId: payment.orderId,

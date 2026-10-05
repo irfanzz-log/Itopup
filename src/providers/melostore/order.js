@@ -1,11 +1,11 @@
 // ============================================================================
-// Melostore H2H — order dispatch and status.
+// Melostore H2H: order dispatch and status.
 //
 // IMPLEMENTED FROM THE OFFICIAL DOCUMENTATION (h2h.melostore.id/id/docs):
 //
-//   POST /api/v1/h2h/transaction            — create
-//   GET  /api/v1/h2h/transaction/{id}       — status
-//   POST /api/v1/h2h/smart-transaction      — create (smart SKU, max-bid model)
+//   POST /api/v1/h2h/transaction            create
+//   GET  /api/v1/h2h/transaction/{id}       status
+//   POST /api/v1/h2h/smart-transaction      create (smart SKU, max-bid model)
 //
 // ── IDEMPOTENCY: THE KEY DECISION IN THIS FILE ──────────────────────────────
 //
@@ -63,7 +63,7 @@ export async function createOrder(input) {
   try {
     payload = buildOrderPayload(input);
   } catch (err) {
-    // An unmapped game or missing target — a configuration/input gap, not a
+    // An unmapped game or missing target: a configuration/input gap, not a
     // provider failure.
     return providerErr(PROVIDER_ERROR.NOT_CONFIGURED, String(err?.message || err), {
       retryable: false,
@@ -100,14 +100,14 @@ export async function createOrder(input) {
     return { ok: true, data: normalizeOrderResponse(result.data), meta: result.meta };
   } catch (err) {
     // We received a response we cannot interpret. The order MAY have been
-    // placed, so this must not be surfaced as a clean failure — the caller sends
+    // placed, so this must not be surfaced as a clean failure: the caller sends
     // it to reconciliation.
     return providerErr(PROVIDER_ERROR.UNKNOWN, String(err?.message || err), { retryable: false });
   }
 }
 
 /**
- * Query an order's status — the reconciliation primitive.
+ * Query an order's status, the reconciliation primitive.
  *
  * Documented: `{id}` may be the provider's transaction id OR our buyer_trx_id.
  * We prefer OUR reference, because that is the only value we are guaranteed to

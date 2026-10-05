@@ -1,5 +1,5 @@
 // ============================================================================
-// Icon resolution — brand slug → asset path.
+// Icon resolution, brand slug → asset path.
 //
 // WHY THE RESOLVER IS TESTED
 //
@@ -7,7 +7,7 @@
 // methods) and each keys on something different. The resolver is the single
 // place a brand is tied to a file; a test here is what keeps a new game or a
 // new bank from silently falling back to initials because nobody wired the
-// asset. A missing icon is not a crash — it is a worse-looking page — which is
+// asset. A missing icon is not a crash, it is a worse-looking page, which is
 // exactly why it needs a test rather than an error to catch it.
 // ============================================================================
 import { describe, it, expect } from "vitest";
@@ -20,7 +20,12 @@ import {
   TELCO_ICONS,
 } from "@/config/icons.js";
 
-/** Every shipped game in GAME_SEED, so a new game fails this test until it has art. */
+/**
+ * Every game the catalogue actually sells. The icon map is built from the
+ * /public/icons/games directory at import time (see src/config/icons.js), so
+ * this asserts the property that matters, no sellable game falls back to
+ * initials, instead of duplicating a hand-written list that drifts.
+ */
 const EXPECTED_GAMES = [
   "mobile-legends",
   "pubg-mobile",
@@ -28,6 +33,32 @@ const EXPECTED_GAMES = [
   "codm",
   "roblox",
   "genshin-impact",
+  // Added for the eFootball rollout: its provider flow needs the customer's own
+  // game login, and its coins are sold as separate iOS/Android products.
+  "efootball",
+  // Games added from the Melostore pricelist.
+  "zepeto",
+  "farlight-84",
+  "age-of-empires-mobile",
+  "pixel-gun-3d",
+  "call-of-duty-mobile",
+  "honor-of-kings",
+  "dragon-raja",
+  "hatsune-miku-colorful-stage",
+  "yalla-ludo",
+  "watcher-of-realms",
+  "super-sus",
+  "lords-mobile",
+  "telegram-stars",
+  "marvel-rivals",
+  "whiteout-survival",
+  "football-master-2",
+  "arena-breakout",
+  "infinite-lagrange",
+  "ensemble-stars-music",
+  "hero-clash",
+  "omega-legends",
+  "eggy-party",
 ];
 
 /** Every operator in PRODUCT_SEED under the `pulsa` game. */
@@ -47,7 +78,10 @@ describe("gameIcon", () => {
     expect(gameIcon(undefined)).toBeNull();
   });
 
-  it("covers exactly the catalogue — no orphan entries, no missing ones", () => {
+  it("covers exactly the catalogue — no orphan files, no missing games", () => {
+    // The map is derived from the directory, so a game with artwork and no
+    // catalogue entry (e.g. a deleted game whose file was left behind) shows
+    // up here as an orphan. Both directions matter.
     expect(Object.keys(GAME_ICONS).sort()).toEqual([...EXPECTED_GAMES].sort());
   });
 });
@@ -71,6 +105,12 @@ describe("paymentIcon", () => {
     expect(paymentIcon("manual_bank_mandiri")).toBe("/icons/banks/bank-mandiri.png");
     expect(paymentIcon("manual_bank_bni")).toBe("/icons/banks/bank-bni.png");
     expect(paymentIcon("manual_bank_bri")).toBe("/icons/banks/bank-bri.png");
+  });
+
+  it("resolves the Permata VA to its logo", () => {
+    // Permata is a live VA method (va_permata) but has no manual-transfer twin.
+    // Its artwork is an SVG, unlike the other banks' PNGs.
+    expect(paymentIcon("va_permata")).toBe("/icons/banks/bank-permata.svg");
   });
 
   it("resolves each offline e-wallet method to its wallet's logo", () => {
@@ -99,7 +139,7 @@ describe("paymentIcon", () => {
 describe("productIcon", () => {
   it("resolves a pulsa product to the operator logo", () => {
     // For pulsa the PRODUCT is the operator, so the product slug carries the
-    // brand — resolving by game slug here would be wrong for every operator.
+    // brand, resolving by game slug here would be wrong for every operator.
     expect(productIcon({ gameSlug: "pulsa", productSlug: "telkomsel" })).toBe(
       "/icons/telcos/telco-telkomsel.png"
     );

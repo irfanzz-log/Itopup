@@ -5,7 +5,7 @@
 //
 // Renders a three-way segmented control on desktop and a single cycling button
 // on mobile. The labels are explicit ("Terang"/"Gelap"/"Sistem") rather than
-// icon-only, because an icon-only theme toggle is ambiguous to a lot of users —
+// icon-only, because an icon-only theme toggle is ambiguous to a lot of users,
 // and `aria-label` alone does not help sighted ones.
 //
 // `mounted` guard: the resolved theme is only known after hydration, so the
@@ -44,7 +44,7 @@ export default function ThemeToggle({ variant = "segmented" }) {
         type="button"
         onClick={toggle}
         className="btn-ghost h-9 w-9 rounded-full p-0"
-        title={`Tema: ${labelFor(theme)} — klik untuk ${labelFor(next)}`}
+        title={`Tema: ${labelFor(theme)}. Klik untuk ${labelFor(next)}`}
         aria-label={`Tema saat ini ${labelFor(theme)}. Ganti ke ${labelFor(next)}.`}
       >
         <Icon className="h-4.5 w-4.5" />

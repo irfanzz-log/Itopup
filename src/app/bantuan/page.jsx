@@ -1,5 +1,5 @@
 // ============================================================================
-// /bantuan — help / FAQ.
+// /bantuan, help / FAQ.
 //
 // Static content by design: a help page that queries the database is a help page
 // that is down when the database is. The anchor #kontak is referenced from the
@@ -7,6 +7,8 @@
 // ============================================================================
 import Link from "next/link";
 import { SUPPORT_PHONE, SUPPORT_HOURS, supportWhatsAppUrl } from "@/config/site";
+import JsonLd from "@/components/seo/JsonLd";
+import { faqJsonLd } from "@/lib/json-ld.js";
 
 export const metadata = {
   title: "Bantuan & Cara Top Up",
@@ -31,7 +33,7 @@ const FAQ = [
   },
   {
     q: "Salah memasukkan User ID, apakah bisa dibatalkan?",
-    a: "Transaksi yang sudah dikirim ke penyedia tidak dapat dibatalkan. Karena itu periksa kembali User ID / Zone ID Anda sebelum menekan “Lanjut ke Pembayaran” — data akun akan dicek otomatis ke penyedia dan Anda tidak akan bisa lanjut jika akunnya tidak ditemukan.",
+    a: "Transaksi yang sudah dikirim ke penyedia tidak dapat dibatalkan. Karena itu periksa kembali User ID / Zone ID Anda sebelum menekan “Lanjut ke Pembayaran”. Data akun akan dicek otomatis ke penyedia, dan Anda tidak akan bisa lanjut jika akunnya tidak ditemukan.",
   },
   {
     q: "Sudah bayar tapi status masih menunggu pembayaran.",
@@ -54,6 +56,10 @@ const FAQ = [
 export default function BantuanPage() {
   return (
     <div className="container-page py-10 sm:py-12">
+      {/* FAQPage mirrors the FAQ array rendered below. The schema and the
+          visible section come from the same constant, so an answer edited in
+          one is correct in the other. */}
+      <JsonLd data={faqJsonLd(FAQ)} />
       <nav aria-label="Breadcrumb" className="mb-4 text-sm text-foreground-subtle">
         <Link href="/" className="hover:text-foreground">Beranda</Link>
         <span className="mx-1.5" aria-hidden="true">/</span>

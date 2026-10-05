@@ -6,7 +6,7 @@
 //   { success: false, error: { code, message, details? }, requestId }
 //
 // `requestId` is echoed so a customer can quote it and support can find the
-// exact log line — without the response ever carrying internals.
+// exact log line, without the response ever carrying internals.
 // ============================================================================
 import { NextResponse } from "next/server";
 import { AppError, ERROR_STATUS } from "./errors.js";
@@ -49,7 +49,7 @@ export function fail(code, message, { status, details, req } = {}) {
  * Convert any thrown value into a safe HTTP response.
  *
  * A non-AppError (a raw Prisma error, a TypeError from a bug) is logged in full
- * server-side and returned to the client as a generic 500 — leaking a driver
+ * server-side and returned to the client as a generic 500; leaking a driver
  * message would expose table and column names.
  */
 export function toFail(err, { req, logger: parentLogger } = {}) {
@@ -72,7 +72,7 @@ export function toFail(err, { req, logger: parentLogger } = {}) {
   }
 
   // A ZodError is a CLIENT error, not a server fault. Without this branch every
-  // malformed request body would surface as HTTP 500 — which hides real 500s in
+  // malformed request body would surface as HTTP 500, which hides real 500s in
   // monitoring and tells the caller nothing about what to fix. The field-level
   // messages are returned so a form can render them, but only the paths and
   // messages: never the submitted values.

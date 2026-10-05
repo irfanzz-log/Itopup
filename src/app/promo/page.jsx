@@ -1,8 +1,8 @@
 // ============================================================================
-// /promo — the promo index.
+// /promo, the promo index.
 //
 // Server component: the list comes straight from the database. Promo copy is
-// rendered as TEXT (see src/components/promo/PromoStrip.jsx) — no promo field is
+// rendered as TEXT (see src/components/promo/PromoStrip.jsx), no promo field is
 // ever passed to dangerouslySetInnerHTML, even though only admins can write it.
 // ============================================================================
 import Link from "next/link";
@@ -18,7 +18,7 @@ export const metadata = {
     "Kumpulan promo aktif ITOPUP: diskon top up game dan voucher pulsa. Klaim kode promonya sebelum berakhir.",
   alternates: { canonical: "/promo" },
   openGraph: {
-    title: "Promo & Voucher — ITOPUP",
+    title: "Promo & Voucher | ITOPUP",
     description: "Diskon dan voucher aktif untuk top up game dan pulsa di ITOPUP.",
     url: "/promo",
     type: "website",
@@ -67,7 +67,7 @@ export default async function PromoPage() {
           <li>1. Pilih layanan dan nominal top up yang diinginkan.</li>
           <li>2. Isi data akun, lalu lanjut ke halaman pembayaran.</li>
           <li>3. Masukkan kode promo pada kolom “Kode promo”, lalu lanjutkan.</li>
-          <li>4. Potongan dihitung ulang di server saat transaksi dibuat — pastikan totalnya sesuai.</li>
+          <li>4. Potongan dihitung ulang di server saat transaksi dibuat, pastikan totalnya sesuai.</li>
         </ol>
         <p className="mt-3 text-xs text-foreground-subtle">
           Kode promo tidak dapat digabung, dan hanya berlaku selama periode promo. Batas pemakaian

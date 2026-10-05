@@ -1,5 +1,5 @@
 // ============================================================================
-// Checkout idempotency key — the "Permintaan tidak cocok dengan transaksi
+// Checkout idempotency key, the "Permintaan tidak cocok dengan transaksi
 // sebelumnya" regression.
 //
 // THE BUG THIS FILE PREVENTS

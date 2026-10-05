@@ -1,24 +1,25 @@
 // ============================================================================
-// /dev/products — catalogue and pricing.
+// /dev/products, catalogue and pricing.
 //
 // THE PRICE COLUMN IS THE POINT. Every variant shows:
-//   costPrice      — what the provider charges us (from the last sync),
-//   sellingPrice   — what the customer pays (server-owned),
-//   margin         — the difference, and the percent,
-//   suggestedPrice — what the pricing rules WOULD derive from the cost.
+//   costPrice, what the provider charges us (from the last sync),
+//   sellingPrice, what the customer pays (server-owned),
+//   margin, the difference, and the percent,
+//   suggestedPrice, what the pricing rules WOULD derive from the cost.
 //
 // When sellingPrice differs from suggestedPrice the row is marked, because that
-// is either a deliberate business decision or a stale price — and the operator
+// is either a deliberate business decision or a stale price, and the operator
 // is the only one who can tell which.
 // ============================================================================
 import Link from "next/link";
-import { listVariantsForAdmin, catalogSummary } from "@/services/catalog.service.js";
+import { listVariantsForAdmin, catalogSummary, listCategories, listFilterEntries } from "@/services/catalog.service.js";
 import { PageHeader, Section, StatCard, StatGrid, DataTable, Td, Money } from "@/components/dev/DevUI";
 import { Badge, EmptyState } from "@/components/ui/primitives";
 import Pagination, { ResultCount } from "@/components/ui/Pagination";
 import { formatIDR } from "@/lib/format";
-import { CATEGORY_KIND_LABEL } from "@/lib/constants";
+import { CATEGORY_KIND, CATEGORY_KIND_LABEL } from "@/lib/constants";
 import ProductActions from "@/components/dev/ProductActions";
+import ProductFilters from "@/components/dev/ProductFilters";
 
 export const dynamic = "force-dynamic";
 
@@ -29,20 +30,46 @@ export default async function DevProductsPage({ searchParams }) {
 
   const page = Math.max(1, parseInt(params?.page ?? "1", 10) || 1);
   const search = typeof params?.q === "string" ? params.q.slice(0, 100) : "";
+  const categoryKind = typeof params?.category === "string" ? params.category.slice(0, 20) : null;
   const gameSlug = typeof params?.game === "string" ? params.game.slice(0, 100) : null;
+  const productSlug = typeof params?.product === "string" ? params.product.slice(0, 100) : null;
 
-  const [{ items, pagination }, summary] = await Promise.all([
-    listVariantsForAdmin({ page, limit: 30, search, gameSlug }),
+  // The second select follows the category. For GAME that is the game list;
+  // for PULSA it is the OPERATOR list, because filtering pulsa by its single
+  // game would offer one useless "Pulsa" option and could never narrow to
+  // Telkomsel vs XL, the distinction the operator actually wants.
+  const [result, summary, categories, filterEntries] = await Promise.all([
+    listVariantsForAdmin({ page, limit: 30, search, categoryKind, gameSlug, productSlug }),
     catalogSummary(),
+    listCategories({ includeInactive: true }),
+    categoryKind ? listFilterEntries(categoryKind, { includeInactive: true }) : null,
   ]);
+  const { items, pagination } = result;
+  const { category, entries } = filterEntries ?? { category: null, entries: [] };
 
   const buildHref = (nextPage) => {
     const query = new URLSearchParams();
     if (search) query.set("q", search);
+    if (categoryKind) query.set("category", categoryKind);
+    // PULSA filters by operator through `product`; GAME filters by game. Only
+    // the one in use rides along, so neither select carries the other's value.
     if (gameSlug) query.set("game", gameSlug);
+    if (productSlug) query.set("product", productSlug);
     if (nextPage > 1) query.set("page", String(nextPage));
     const qs = query.toString();
     return `/dev/products${qs ? `?${qs}` : ""}`;
+  };
+
+  // The second-level select is driven by the category: the entry list is games
+  // for GAME and operators for PULSA. The URL param it writes must match what
+  // listVariantsForAdmin reads, `game` for one, `product` for the other, or
+  // a chosen filter would be dropped on submit.
+  const secondLevel = {
+    kind: category?.kind === CATEGORY_KIND.PULSA ? "product" : "game",
+    label: category?.kind === CATEGORY_KIND.PULSA ? "Operator" : "Game / Layanan",
+    entries,
+    // The selected value is whatever the current URL carries for this level.
+    selected: category?.kind === CATEGORY_KIND.PULSA ? productSlug : gameSlug,
   };
 
   return (
@@ -70,28 +97,18 @@ export default async function DevProductsPage({ searchParams }) {
       {summary.unsellableVariants > 0 ? (
         <div className="mb-6">
           <Badge tone="danger">
-            {summary.unsellableVariants} varian aktif tidak punya mapping provider — tidak akan
+            {summary.unsellableVariants} varian aktif tidak punya mapping provider. Tidak akan
             pernah bisa dijual sampai di-link lewat sinkronisasi.
           </Badge>
         </div>
       ) : null}
 
-      <form method="get" className="card mb-4 flex flex-wrap items-end gap-3 p-4">
-        {gameSlug ? <input type="hidden" name="game" value={gameSlug} /> : null}
-        <div className="min-w-[16rem] flex-1">
-          <label htmlFor="q" className="label">Cari varian</label>
-          <input
-            id="q"
-            name="q"
-            type="search"
-            defaultValue={search}
-            placeholder="Contoh: 355 Diamonds"
-            className="field"
-          />
-        </div>
-        <button type="submit" className="btn-primary">Cari</button>
-        {search || gameSlug ? <Link href="/dev/products" className="btn-ghost">Reset</Link> : null}
-      </form>
+      <ProductFilters
+        search={search}
+        categoryKind={categoryKind}
+        categories={categories}
+        secondLevel={secondLevel}
+      />
 
       {items.length === 0 ? (
         <EmptyState

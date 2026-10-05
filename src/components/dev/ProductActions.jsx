@@ -1,12 +1,12 @@
 "use client";
 
 // ============================================================================
-// ProductActions — the per-variant admin panel on /dev/products.
+// ProductActions, the per-variant admin panel on /dev/products.
 //
 // THREE OPERATIONS, all POST /api/dev/products:
-//   * ubah harga   — set the selling price in absolute rupiah
-//   * ganti SKU    — re-point the variant at another provider SKU
-//   * hapus        — remove the variant (deactivated when it has order history)
+//   * ubah harga, set the selling price in absolute rupiah
+//   * ganti SKU, re-point the variant at another provider SKU
+//   * hapus, remove the variant (deactivated when it has order history)
 //
 // WHAT THIS COMPONENT IS DELIBERATELY DUMB ABOUT
 //
@@ -14,7 +14,7 @@
 // input the operator typed; the SKU list is rendered from what the server
 // returned; the margin shown next to either is a *display*, and the row that
 // matters is the one the API writes to the database. The checkout re-reads that
-// row inside its transaction — nothing here can reach it.
+// row inside its transaction, nothing here can reach it.
 //
 // The same is true of availability: the SKU list is the provider's view AT THE
 // MOMENT THE PANEL OPENED. It can go stale between loading and saving, which is

@@ -3,7 +3,7 @@
 Implemented against the official documentation at
 **https://h2h.melostore.id/id/docs** (Indonesian). Every endpoint path, header
 name, parameter name and status string in this directory is taken from that
-documentation — none is guessed.
+documentation, and none is guessed.
 
 ## Status
 
@@ -21,7 +21,7 @@ documentation — none is guessed.
 
 ## Authentication (documented)
 
-Outbound — two headers on every request:
+Outbound: two headers on every request.
 
 | Header | Env var |
 | --- | --- |
@@ -33,7 +33,7 @@ Outbound — two headers on every request:
 There is **no username** in the documented scheme, so `MELOSTORE_USERNAME` is
 deliberately unused.
 
-Inbound — the webhook is signed, and it is a *separate secret*:
+Inbound: the webhook is signed, and it is a *separate secret*.
 
 > "Gunakan header signature `X-H2H-Signature` ... Tanda tangan diperoleh dari
 > hash HMAC SHA256 dari payload JSON mentah menggunakan `webhook_secret` akun
@@ -41,7 +41,7 @@ Inbound — the webhook is signed, and it is a *separate secret*:
 
 That means `MELOSTORE_WEBHOOK_SECRET` (`webhook_secret` in the partner
 dashboard). Without it every callback is refused and orders settle only through
-reconciliation polling — see `configurationGaps()` in `client.js`.
+reconciliation polling. See `configurationGaps()` in `client.js`.
 
 ## Endpoints
 
@@ -68,7 +68,7 @@ sebelumnya dengan HTTP 200 tanpa membuat order baru."
 
 So `PROVIDER_SUPPORTS_CLIENT_REFERENCE = true` in `order.js`. A transport retry
 with the same idempotency key cannot buy twice. A **timeout is still never
-retried** — the correct resolution for an ambiguous outcome is reconciliation by
+retried**. The correct resolution for an ambiguous outcome is reconciliation by
 reference, not a resend.
 
 ### An unknown account is a 422, not a flag
@@ -89,7 +89,7 @@ documented cursor, so it is already correct for the post-deprecation API.
 
 `pending | processing | success | failed | refunded` → `PENDING | PROCESSING |
 SUCCESS | FAILED | REFUND`. An unrecognised value becomes `UNKNOWN`, which
-triggers reconciliation — never a wrong terminal state.
+triggers reconciliation, never a wrong terminal state.
 
 ### Field mapping has no per-game field table
 
@@ -97,18 +97,18 @@ The documented transaction target is three slots (`customer_target`,
 `customer_target_zone`, `additional_data`) for every game. So
 `PRIMARY_TARGET_FIELD` says *which customer input fills the target slot* per
 game, and everything else goes into `additional_data` keyed as the game config
-names it — matching the documented `inquiry_forms` contract.
+names it, matching the documented `inquiry_forms` contract.
 
 ### Money is rupiah, and the balance is not cash
 
 `h2h_balance` is IDR (the docs show 15750000.0 ≈ 926.47 USD at 17000). The docs
-also describe it as prepaid purchase credit — "Non-Refundable (No-Cashout)". The
+also describe it as prepaid purchase credit, "Non-Refundable (No-Cashout)". The
 admin UI must label it **saldo prabayar**, never a withdrawable balance.
 
 ## Not implemented
 
 - **Smart Order (max-bid) end to end.** `createOrder` supports a smart SKU when
-  `maxBid` is supplied, but nothing in the app sets one yet — no product is
+  `maxBid` is supplied, but nothing in the app sets one yet: no product is
   configured as smart. Wiring it needs a business decision about how `max_bid` is
   chosen.
 - **`mobile-legends/purchase-limit`.** Documented, not needed by the current
@@ -133,5 +133,5 @@ assert against payloads copied from the documentation.
 
 - No provider parameter name may appear outside `src/providers/melostore/`.
 - No secret may be read anywhere except `signature.js` / `client.js`.
-- A timeout must never be translated into a failure — it is `unknown: true`.
+- A timeout must never be translated into a failure: it is `unknown: true`.
 - `parseCallback` must verify the signature BEFORE reading any field from the body.

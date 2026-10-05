@@ -4,7 +4,7 @@
 // Returns the current session's user, or 401. Used by client components that
 // need to re-check auth after a long-lived page (e.g. the checkout wizard).
 //
-// `no-store` because the answer is per-session — a shared cache serving one
+// `no-store` because the answer is per-session, a shared cache serving one
 // user's profile to another would be a serious leak.
 // ============================================================================
 import { route, ok, fail } from "@/lib/api.js";

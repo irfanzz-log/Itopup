@@ -1,18 +1,18 @@
 // ============================================================================
-// Offline payment amount math — shared by every operator-verified method.
+// Offline payment amount math, shared by every operator-verified method.
 //
 // WHY THIS FILE IS SHARED AND NOT PER-ADAPTER
 //
 // Every offline method (bank transfer, e-wallet transfer) needs the same thing:
 // the exact amount the customer must send, and the steps that tell them how to
 // send it. If each adapter implemented that itself, the two would drift, and the
-// drift would be silent — a customer transfers what the page says, and the
+// drift would be silent: a customer transfers what the page says, and the
 // operator cannot find the payment.
 //
 // Pure functions only: no `server-only`, no environment, no I/O. That keeps them
 // trivially testable and impossible to accidentally ship into a client bundle.
 //
-// NO UNIQUE AMOUNT CODE — read before re-adding one
+// NO UNIQUE AMOUNT CODE: read before re-adding one
 //
 // This file used to add a 3-digit "kode unik" to the payable amount so an
 // operator could identify a transfer by the last three digits of the amount.
@@ -27,7 +27,7 @@
 //
 // The amount the customer sends is now EXACTLY the order total. What identifies
 // the payment is the INVOICE number, which the customer writes into the bank
-// transfer remark field — a real field on a real form.
+// transfer remark field, a real field on a real form.
 // ============================================================================
 
 import { formatNumber } from "../../lib/format.js";
@@ -35,7 +35,7 @@ import { formatNumber } from "../../lib/format.js";
 /**
  * Format an amount for the instructions.
  *
- * A non-numeric input must never reach the customer as "Rp NaN" — an instruction
+ * A non-numeric input must never reach the customer as "Rp NaN": an instruction
  * that prints NaN is worse than a wrong one, because it looks like a broken page
  * and gives the customer no amount to send at all. Anything unparseable renders
  * as 0, and the surrounding text still tells them to send the amount shown on the
@@ -79,7 +79,7 @@ export function buildTransferSteps({ channel, payableAmount, invoice }) {
     // No remark field exists, so say what the operator actually matches on
     // instead of asking for something the customer cannot provide.
     steps.push(
-      `Jumlahnya harus tepat ${amount} — tidak lebih dan tidak kurang, karena pembayaran dicocokkan dari nominal, pengirim, dan waktu transfer.`
+      `Jumlahnya harus tepat ${amount}, tidak lebih dan tidak kurang, karena pembayaran dicocokkan dari nominal, pengirim, dan waktu transfer.`
     );
   } else if (reference) {
     steps.push(

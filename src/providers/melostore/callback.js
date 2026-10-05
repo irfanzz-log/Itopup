@@ -1,8 +1,8 @@
 // ============================================================================
-// Melostore H2H — inbound callback handling.
+// Melostore H2H: inbound callback handling.
 //
 // ORDER OF OPERATIONS IS THE SECURITY CONTROL HERE:
-//   1. read the RAW body (never the parsed body — re-serialising changes bytes
+//   1. read the RAW body (never the parsed body; re-serialising changes bytes
 //      and breaks the HMAC),
 //   2. verify the signature,
 //   3. only then parse and normalise.
@@ -24,6 +24,7 @@
 // raw string the signature covered.
 // ============================================================================
 import { PROVIDER_ERROR, providerErr } from "../contract.js";
+import { createHash } from "node:crypto";
 import { verifyCallbackSignature } from "./signature.js";
 import { normalizeCallback } from "./mapper.js";
 
@@ -74,13 +75,24 @@ export async function parseCallback({ headers, rawBody, log } = {}) {
 
     // The event id is what makes replay protection possible. Melostore sends no
     // event id, so normalizeCallback derives one from the transaction id plus
-    // the status — a redelivery of the same status dedupes, a genuine status
+    // the status. A redelivery of the same status dedupes; a genuine status
     // CHANGE does not.
     if (!normalized?.eventId) {
       return providerErr(PROVIDER_ERROR.UNKNOWN, "Callback tidak menyertakan event id.", {
         retryable: false,
       });
     }
+
+    // normalizeCallback sees the PARSED body and cannot hash the bytes the
+    // signature covered, so the hash is attached here; this layer holds the
+    // raw string. Without it `recordWebhookEvent` rejects with
+    // `payloadHash is missing`, and every genuine callback 500s AFTER the
+    // signature already verified. The Midtrans route hashes via hashPayload()
+    // for the same reason; this is the same value computed locally, so the
+    // provider layer does not import the service layer.
+    normalized.payloadHash = createHash("sha256")
+      .update(String(rawBody ?? ""), "utf8")
+      .digest("hex");
 
     return { ok: true, data: normalized };
   } catch (err) {

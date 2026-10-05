@@ -1,5 +1,5 @@
 // ============================================================================
-// /member — member overview.
+// /member, member overview.
 //
 // The layout at src/app/(member)/layout.jsx has already verified the session
 // against the database and refused blocked accounts, so this page can assume a

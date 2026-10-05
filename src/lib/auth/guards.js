@@ -9,7 +9,7 @@
 import { AppError } from "../errors.js";
 import { getCurrentUser, getSessionUser } from "./session.js";
 
-/** Role hierarchy — SUPERADMIN ⊃ DEV ⊃ MEMBER. */
+/** Role hierarchy: SUPERADMIN ⊃ DEV ⊃ MEMBER. */
 export const ROLE_RANK = {
   MEMBER: 10,
   DEV: 20,
@@ -31,7 +31,7 @@ export const SUPERADMIN_ROLES = ["SUPERADMIN"];
 
 /**
  * Assert a user is present and usable. Blocked accounts are refused here, not
- * at login only — a member blocked mid-session must lose access immediately.
+ * at login only; a member blocked mid-session must lose access immediately.
  */
 export function assertUsable(user) {
   if (!user) throw new AppError("ITP_UNAUTHORIZED");

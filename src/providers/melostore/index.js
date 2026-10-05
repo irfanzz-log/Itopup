@@ -1,10 +1,10 @@
 // ============================================================================
-// Melostore H2H — assembled adapter.
+// Melostore H2H: assembled adapter.
 //
 // This is the object src/providers/index.js hands out. It satisfies the contract
 // in ../contract.js and is the ONLY surface the core app sees.
 //
-// It carries no provider-specific knowledge of its own — it wires the focused
+// It carries no provider-specific knowledge of its own; it wires the focused
 // modules together, so each concern (signing, mapping, dispatch, reconciliation)
 // stays independently testable.
 // ============================================================================

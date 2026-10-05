@@ -1,5 +1,5 @@
 // ============================================================================
-// Post-login redirect target validation — SERVER side.
+// Post-login redirect target validation (SERVER side).
 //
 // The client has its own copy (src/lib/api-client.js#safeNextPath) because a
 // client form needs it too. This one is the authoritative version for server

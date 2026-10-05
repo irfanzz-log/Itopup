@@ -3,7 +3,7 @@
 //
 // Design:
 //   * The cookie carries a signed JWT (jose, HS256). The JWT's only payload is
-//     the session row id (`sid`) plus the user id as `sub` — never a role, never
+//     the session row id (`sid`) plus the user id as `sub`, never a role, never
 //     an email, so a leaked token reveals nothing about the account.
 //   * The database stores sha256(JWT), NOT the JWT. A database dump therefore
 //     cannot be replayed as a live session, because the attacker would need the
@@ -15,7 +15,7 @@
 //   * Cookie flags: HttpOnly, SameSite=Lax, Secure in production, Path=/.
 //     SameSite=Lax (not Strict) is deliberate: Strict drops the cookie on the
 //     return leg of an OAuth/magic-link redirect, and Lax already blocks
-//     cross-site POST — which is the CSRF vector that matters.
+//     cross-site POST, which is the CSRF vector that matters.
 // ============================================================================
 import { SignJWT, jwtVerify } from "jose";
 import { createHash, randomUUID } from "node:crypto";
@@ -33,6 +33,9 @@ function maxAgeSeconds() {
   return Number.isFinite(n) && n > 0 ? n : 604800;
 }
 
+/** The cookie lifetime in seconds, for the OAuth callback to mirror exactly. */
+export const SESSION_MAX_AGE_SECONDS = maxAgeSeconds();
+
 function secretKey() {
   const secret = process.env.AUTH_SECRET;
   if (!secret || secret.length < 32) {
@@ -44,7 +47,7 @@ function secretKey() {
   return new TextEncoder().encode(secret);
 }
 
-/** sha256 hex — the only form of the token that ever reaches the database. */
+/** sha256 hex, the only form of the token that ever reaches the database. */
 export function hashToken(token) {
   return createHash("sha256").update(token).digest("hex");
 }
@@ -96,7 +99,7 @@ export async function createSession(user, { ip = null, userAgent = null } = {}) 
 
 /**
  * Resolve the user behind a raw cookie value, or null.
- * Never throws on a bad/expired/forged token — callers decide what to do.
+ * Never throws on a bad/expired/forged token; callers decide what to do.
  */
 export async function userFromToken(token) {
   if (!token || typeof token !== "string") return null;
@@ -167,7 +170,7 @@ export async function getSessionUser(req) {
  * Resolve the user inside a server component / layout / server action.
  *
  * A component cannot be handed a `Request`, and `cookies()` is only reachable
- * from the request scope — hence two entry points over one verifier.
+ * from the request scope, hence two entry points over one verifier.
  */
 export async function getCurrentUser() {
   // Imported lazily so this module stays loadable from plain Node scripts
@@ -191,7 +194,7 @@ export async function destroySession(req) {
       await prisma.session.delete({ where: { id: payload.sid } }).catch(() => {});
     }
   } catch {
-    /* token already invalid — nothing to revoke */
+    /* token already invalid; nothing to revoke */
   }
 }
 
@@ -219,7 +222,7 @@ export async function invalidateAllSessions(userId, tx = prisma) {
  *
  * Deliberately does NOT bump sessionVersion: that would invalidate the current
  * session too (its `userVersion` snapshot would no longer match), logging the
- * member out of the tab they just used — which reads as a bug. Deleting the
+ * member out of the tab they just used, which reads as a bug. Deleting the
  * other rows is sufficient and leaves the current device working.
  *
  * @returns {Promise<number>} how many other sessions were ended

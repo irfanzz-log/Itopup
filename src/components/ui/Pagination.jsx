@@ -6,7 +6,7 @@
 //   * no JS is required,
 //   * crawlers can follow the sequence.
 //
-// `buildHref` receives a page number and returns a href — the caller keeps
+// `buildHref` receives a page number and returns a href, the caller keeps
 // ownership of the query string, so this component never has to know which
 // filters a given list uses.
 // ============================================================================

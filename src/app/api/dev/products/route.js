@@ -1,23 +1,23 @@
 // ============================================================================
-// /api/dev/products — catalogue mutations from the admin panel.
+// /api/dev/products, catalogue mutations from the admin panel.
 //
 // Actions:
-//   update_price  — set a variant's selling price (absolute rupiah)
-//   reassign_sku  — re-point a variant at a different provider SKU
-//   delete        — remove a variant, or a product and its variants
+//   update_price, set a variant's selling price (absolute rupiah)
+//   reassign_sku, re-point a variant at a different provider SKU
+//   delete, remove a variant, or a product and its variants
 //
 // WHY THE PRICE IS NEVER TRUSTED FROM THE CLIENT
 //
 // `sellingPrice` is what the order service charges. A client-side number that
 // reached the database unvalidated would be a price an attacker could set to
-// 1. Validation here is defense in depth, not the only gate — the checkout
+// 1. Validation here is defense in depth, not the only gate, the checkout
 // re-reads the row from the database inside its transaction.
 //
 // WHY reassign_sku VALIDATES AGAINST THE LIVE PROVIDER
 //
 // The operator is picking from a list of SKUs the provider currently lists. A
 // code that is not on that list, or is on it but out of stock, is rejected
-// rather than written — a successful write that leaves the variant unbuyable is
+// rather than written, a successful write that leaves the variant unbuyable is
 // worse than a clear error, because it looks fixed in the admin panel.
 //
 // AUDIT: every action writes an AuditLog row with the before/after values.
@@ -64,7 +64,7 @@ export const GET = route(async (req, ctx, { log }) => {
   const { searchParams } = new URL(req.url);
   const variantId = searchParams.get("variantId");
 
-  // The SKU candidate list is the one admin read that contacts the provider —
+  // The SKU candidate list is the one admin read that contacts the provider,
   // it needs the same guard as a mutation, just with the read-only budget.
   await requireStaff(req);
   await guardMutation(req, {

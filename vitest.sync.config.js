@@ -17,6 +17,9 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
+      // Same stub the test suite uses: these operator scripts run server-side,
+      // but `server-only` would otherwise refuse to load outside a Next build.
+      'server-only': fileURLToPath(new URL('./tests/stubs/server-only.js', import.meta.url)),
     },
   },
 });

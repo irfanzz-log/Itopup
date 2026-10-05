@@ -2,13 +2,13 @@
 // Payment provider contract.
 //
 // NO GATEWAY HAS BEEN CHOSEN. This file defines the interface only. There is no
-// endpoint, no signature scheme, and no status string invented anywhere in it —
+// endpoint, no signature scheme, and no status string invented anywhere in it:
 // an adapter's mapper owns all of that.
 //
 // The core app calls exactly three things:
-//   createPayment()      — start a payment, get instructions for the customer
-//   getPaymentStatus()   — poll/reconcile
-//   verifyWebhook()      — authenticate an inbound notification
+//   createPayment()      : start a payment, get instructions for the customer
+//   getPaymentStatus()   : poll/reconcile
+//   verifyWebhook()      : authenticate an inbound notification
 //
 // Same result-envelope discipline as the top-up provider, for the same reason:
 // a payment gateway timeout is an UNKNOWN outcome, not a failure, and treating

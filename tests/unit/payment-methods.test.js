@@ -1,5 +1,5 @@
 // ============================================================================
-// Payment method catalogue — invariants that must hold before a customer sees
+// Payment method catalogue, invariants that must hold before a customer sees
 // a checkout.
 //
 // EVERY METHOD IS SERVED BY MIDTRANS SNAP. The manual/offline methods are gone:
@@ -9,7 +9,7 @@
 //
 // The bug these lock down: a method could be `enabled: true` in the catalogue,
 // appear in the checkout, and then fail at the last step because the gateway
-// was not configured — the customer fills the whole form and is then refused.
+// was not configured, the customer fills the whole form and is then refused.
 // `availablePaymentMethods()` must filter on the ADAPTER being configured, not
 // just on `enabled`.
 //
@@ -18,19 +18,19 @@
 // src/lib/env.server.js caches each variable on FIRST read (deliberately: the
 // environment cannot change while the process runs, so re-reading is waste).
 // That makes it impossible to test "what happens when this variable is unset"
-// by mutating process.env after import — the cached value wins. `vi.resetModules()`
+// by mutating process.env after import, the cached value wins. `vi.resetModules()`
 // plus a dynamic import gives each case a module graph that has never read the
 // environment, which is the only way to exercise the unset paths honestly.
 //
 // UNSETTING A VARIABLE: use `process.env.X = ""`, not `delete process.env.X`.
 // src/lib/env.js loads .env into process.env on first import with
-// `override: false`, which FILLS GAPS — so a deleted variable comes straight
+// `override: false`, which FILLS GAPS, so a deleted variable comes straight
 // back from the file. An empty string survives that load, and env.server.js
 // normalises "" to undefined, which is exactly the "unset" state under test.
 // ============================================================================
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
-/** The Midtrans gateway, configured — the state a live deployment is in. */
+/** The Midtrans gateway, configured, the state a live deployment is in. */
 const GATEWAY = {
   MIDTRANS_SERVER_KEY: "SB-Mid-server-TEST",
   MIDTRANS_MERCHANT_ID: "M001",
@@ -55,7 +55,7 @@ afterEach(() => {
 
 /** Import the catalogue + registry fresh, so env reads happen NOW.
  *
- * `availablePaymentMethods` lives in payment.server.js — it touches the
+ * `availablePaymentMethods` lives in payment.server.js, it touches the
  * adapters, which read secrets, so it cannot live in the client-imported
  * catalogue. */
 async function loadPaymentModules() {
@@ -94,7 +94,7 @@ describe("catalogue integrity", () => {
     // resolvable provider would be rendered, chosen, and then refused.
     //
     // Now that Midtrans is registered, the VA/QRIS/retail methods are enabled.
-    // The guard is not "gateway methods are off" — it is "an enabled method
+    // The guard is not "gateway methods are off", it is "an enabled method
     // resolves to an adapter that is actually registered", which is what keeps
     // a customer from reaching a checkout that cannot produce instructions.
     const { config, registry } = await loadPaymentModules();
@@ -138,17 +138,19 @@ describe("payment method is an instrument, not a product", () => {
     }
   });
 
-  it("offers every e-wallet method for ANY purchase, not just its own", async () => {
+  it("offers QRIS for ANY purchase, not just a wallet one", async () => {
     const { config } = await loadPaymentModules();
     const all = await config.availablePaymentMethods();
 
-    // A diamond purchase — no wallet involved — must still offer every wallet.
+    // A diamond purchase must still offer QRIS, which is what covers the wallets
+    // now that the direct e-wallet charges are gone.
     const offered = config.filterMethodsForPurchase(all, { amount: 100_000 });
     const keys = offered.map((m) => m.key);
 
-    expect(keys).toContain("ewallet_gopay");
-    expect(keys).toContain("ewallet_shopeepay");
     expect(keys).toContain("qris");
+    // Direct wallets are intentionally no longer offered (QRIS covers them).
+    expect(keys).not.toContain("ewallet_gopay");
+    expect(keys).not.toContain("ewallet_shopeepay");
   });
 
   it("still hides a method below its minimum", async () => {
@@ -168,17 +170,24 @@ describe("offered methods vs servable methods", () => {
     const { config } = await loadPaymentModules();
     const keys = (await config.availablePaymentMethods()).map((m) => m.key);
 
-    // The brief: the customer must be able to pay by QR, wallet, VA and bank.
+    // The brief: the customer must be able to pay by QR and bank transfer.
+    // E-wallets are reached THROUGH QRIS, the direct wallet methods were
+    // removed because one QR covers them all and renders identically everywhere.
+    // Cards need browser tokenisation this app does not implement, and retail
+    // outlets were dropped in favour of QRIS for small amounts; both stay
+    // resolvable as legacy for historical orders but are never offered.
     expect(keys).toContain("qris");
-    expect(keys).toContain("ewallet_gopay");
-    expect(keys).toContain("ewallet_shopeepay");
     expect(keys).toContain("va_bca");
     expect(keys).toContain("va_mandiri");
-    expect(keys).toContain("retail_alfamart");
+    expect(keys).not.toContain("ewallet_gopay");
+    expect(keys).not.toContain("ewallet_shopeepay");
+    expect(keys).not.toContain("card_credit");
+    expect(keys).not.toContain("retail_alfamart");
+    expect(keys).not.toContain("retail_indomaret");
   });
 
   it("hides EVERY method when the gateway is not configured", async () => {
-    // With Midtrans unset there is no fallback channel at all — no bank account
+    // With Midtrans unset there is no fallback channel at all, no bank account
     // and no wallet number exist on our side any more. The honest checkout is
     // an empty list plus the reason, not a set of methods that 401 on pay.
     process.env.MIDTRANS_SERVER_KEY = "";
@@ -310,7 +319,7 @@ describe("presentation helpers", () => {
 
     // A VA carries a flat Rp 4.000 admin fee.
     expect(config.computePaymentFee(config.getPaymentMethod("va_bca"), 200_000)).toBe(4000);
-    // QRIS at 0.7% of 100.000 = 700 — integer arithmetic, no float drift.
+    // QRIS at 0.7% of 100.000 = 700, integer arithmetic, no float drift.
     expect(config.computePaymentFee(config.getPaymentMethod("qris"), 100_000)).toBe(700);
   });
 

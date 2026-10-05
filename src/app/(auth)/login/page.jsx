@@ -12,9 +12,11 @@ import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import AuthShell from "@/components/auth/AuthShell";
 import LoginForm from "@/components/auth/LoginForm";
+import GoogleButton from "@/components/auth/GoogleButton";
 import { Alert, Skeleton } from "@/components/ui/primitives";
 import { currentUserOrNull } from "@/lib/auth/guards.js";
 import { safeNextPathServer } from "@/lib/redirect.js";
+import { isGoogleEnabled } from "@/lib/google-oauth.js";
 
 export const dynamic = "force-dynamic";
 
@@ -41,6 +43,35 @@ export default async function LoginPage({ searchParams }) {
           <Alert tone="success" title="Akun berhasil dibuat">
             Silakan masuk menggunakan email dan password yang baru Anda daftarkan.
           </Alert>
+        </div>
+      ) : null}
+
+      {params?.google_error ? (
+        <div className="mb-5">
+          <Alert tone="danger" title="Gagal masuk dengan Google">
+            {params.google_error === "unverified"
+              ? "Email Google Anda belum diverifikasi. Verifikasi email di Google terlebih dahulu."
+              : params.google_error === "state"
+                ? "Sesi login Google tidak valid atau sudah kedaluwarsa. Coba lagi."
+                : "Layanan Google sedang tidak tersedia. Coba lagi nanti atau masuk dengan password."}
+          </Alert>
+        </div>
+      ) : null}
+
+      {isGoogleEnabled() ? (
+        <div className="mb-5">
+          <GoogleButton nextPath={nextPath} enabled />
+        </div>
+      ) : null}
+
+      {isGoogleEnabled() ? (
+        <div className="relative my-5">
+          <div className="absolute inset-0 flex items-center" aria-hidden="true">
+            <div className="w-full border-t border-border" />
+          </div>
+          <div className="relative flex justify-center text-xs uppercase">
+            <span className="bg-surface px-3 text-foreground-subtle">atau</span>
+          </div>
         </div>
       ) : null}
 

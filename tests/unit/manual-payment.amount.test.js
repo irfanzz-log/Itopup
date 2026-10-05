@@ -1,11 +1,11 @@
 // ============================================================================
-// Manual transfer — the payable-amount invariant, AFTER the "kode unik" removal.
+// Manual transfer, the payable-amount invariant, AFTER the "kode unik" removal.
 //
 // THE CHANGE THESE TESTS LOCK DOWN
 //
 // The adapter used to add a deterministic 3-digit code to the amount so an
 // operator could match a transfer by the last three digits. That meant a customer
-// quoted Rp 8.800 was told to transfer Rp 8.870 — more than the price on their
+// quoted Rp 8.800 was told to transfer Rp 8.870, more than the price on their
 // own order page, for a reason that reads as a hidden fee.
 //
 // The invariant is now the opposite and much simpler:
@@ -98,14 +98,14 @@ describe("payable amount equals the order total", () => {
 });
 
 // ============================================================================
-// Destination filtering — the customer chose a method; show only its number.
+// Destination filtering, the customer chose a method; show only its number.
 //
 // THE BUG THESE LOCK DOWN (2026-09-26)
 //
 // `createPayment` selected destinations by CHANNEL only: pick DANA and the
 // panel listed every e-wallet number we hold; pick BCA and it listed every
 // bank account. The customer had already chosen, so the extra rows were not
-// options — they were instructions to send the money somewhere the order did
+// options, they were instructions to send the money somewhere the order did
 // not ask for. Money landing in the wrong wallet is a refund case at best.
 // ============================================================================
 describe("destinationsForMethod", () => {
@@ -138,7 +138,7 @@ describe("destinationsForMethod", () => {
   });
 
   it("keeps the whole list for the generic 'lainnya' methods", () => {
-    // A customer picking this did not name a wallet — the list IS the answer.
+    // A customer picking this did not name a wallet, the list IS the answer.
     expect(destinationsForMethod("manual_ewallet_lainnya", WALLETS)).toHaveLength(4);
     expect(destinationsForMethod("manual_bank_lainnya", BANKS)).toHaveLength(2);
   });

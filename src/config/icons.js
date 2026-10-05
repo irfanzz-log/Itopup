@@ -1,17 +1,17 @@
 // ============================================================================
-// Brand icon resolution — one place where a brand meets its artwork.
+// Brand icon resolution: one place where a brand meets its artwork.
 //
 // WHY A MODULE INSTEAD OF LETTING EACH COMPONENT GUESS A PATH
 //
-// Three different catalogues need brand art — games, pulsa operators, and
-// payment methods — and each one keys on something different (game slug,
+// Three different catalogues need brand art: games, pulsa operators, and
+// payment methods. Each one keys on something different (game slug,
 // product slug, payment method key). Without a single resolver, the mapping
 // leaks into a dozen components and they drift apart: one table shows the
 // operator logo, another shows the same operator's initials, and neither is
 // obviously wrong until a customer screenshots it.
 //
 // Here, a brand resolves to a path or to null. `null` is an explicit signal to
-// the component to fall back to its initials — it is NOT a missing-image bug.
+// the component to fall back to its initials; it is NOT a missing-image bug.
 //
 // ── WHERE THE FILES LIVE ────────────────────────────────────────────────────
 //
@@ -28,27 +28,29 @@
 // Game icons are the publisher's own app-store artwork (App Store / Play Store
 // marketing icons). Bank, e-wallet, and telco logos are the official brand
 // marks from the idn-finlogos brand-mark library. Both are brand assets shown
-// to identify the brand the customer is choosing — used at small size in a
+// to identify the brand the customer is choosing, used at small size in a
 // product picker, not as part of the site's own identity.
 // ============================================================================
+
+import { scanGameIcons } from "./icons.server.js";
 
 /** Base path served by Next.js from /public. */
 const ICON_BASE = "/icons";
 
 /**
- * Game slug → icon file. These are the games in GAME_SEED, and the file names
- * are 1:1 with the slug, so adding a game means dropping in one PNG.
+ * Game slug → icon file. File names are 1:1 with the slug, so adding a game
+ * means dropping one file into /public/icons/games; no edit needed here.
+ *
+ * The map is BUILT from the directory at server-module load: a list kept by
+ * hand silently drifts from what is on disk, and a game whose file was never
+ * added renders as initials forever. The scan itself lives in
+ * src/config/icons.server.js; this module is imported by client components and
+ * a raw `node:fs` request in it breaks the browser chunk.
+ *
+ * CODM's store artwork is a JPEG, the other seeds are PNGs and the Melostore
+ * thumbnails are WebP; the extension is whatever the publisher's CDN returned.
  */
-const GAME_ICONS = {
-  "mobile-legends": "games/mobile-legends.png",
-  "pubg-mobile": "games/pubg-mobile.png",
-  "free-fire": "games/free-fire.png",
-  // CODM's store artwork is served as a JPEG, not a PNG; the extension is what
-  // the publisher's CDN returned, not an oversight.
-  codm: "games/codm.jpg",
-  roblox: "games/roblox.png",
-  "genshin-impact": "games/genshin-impact.png",
-};
+const GAME_ICONS = scanGameIcons();
 
 /**
  * Pulsa operator → logo. Keyed on the PRODUCT slug under the `pulsa` game
@@ -70,24 +72,10 @@ const TELCO_ICONS = {
  * Payment method key → logo, straight from PAYMENT_METHODS.
  *
  * NOTE the split: the method keys are `manual_bank_bca` / `manual_ewallet_dana`,
- * so the icon is keyed on the BRAND, derived from the key — never the key
+ * so the icon is keyed on the BRAND, derived from the key, never the key
  * itself. Two methods from the same brand (a bank transfer and that bank's VA)
  * share one logo, which is correct: they are the same brand to the customer.
  */
-const BANK_ICONS = {
-  bca: "banks/bank-bca.png",
-  mandiri: "banks/bank-mandiri.png",
-  bni: "banks/bank-bni.png",
-  bri: "banks/bank-bri.png",
-};
-
-const EWALLET_ICONS = {
-  dana: "ewallets/ewallet-dana.png",
-  ovo: "ewallets/ewallet-ovo.png",
-  gopay: "ewallets/ewallet-gopay.png",
-  shopeepay: "ewallets/ewallet-shopee-pay.png",
-};
-
 /**
  * Resolve a game's icon.
  * @param {string} slug game slug
@@ -104,33 +92,6 @@ export function gameIcon(slug) {
  */
 export function telcoIcon(slug) {
   return TELCO_ICONS[slug] ? `${ICON_BASE}/${TELCO_ICONS[slug]}` : null;
-}
-
-/**
- * Resolve a payment method's logo.
- *
- * @param {string} methodKey the PAYMENT_METHODS key, e.g. `manual_bank_bca`
- * @returns {string|null} the brand's logo, or null for methods with no art
- *   (the generic "bank lainnya" and the gateway methods that are not live yet)
- */
-export function paymentIcon(methodKey) {
-  const key = String(methodKey ?? "");
-
-  // `manual_bank_bca` → brand `bca`; `va_bni` → brand `bni`.
-  const bankBrand = key.match(/_(bca|mandiri|bni|bri)$/)?.[1];
-  if (bankBrand && BANK_ICONS[bankBrand]) {
-    return `${ICON_BASE}/${BANK_ICONS[bankBrand]}`;
-  }
-
-  const walletBrand = key.match(/ewallet_(dana|ovo|gopay|shopeepay)$/)?.[1];
-  if (walletBrand && EWALLET_ICONS[walletBrand]) {
-    return `${ICON_BASE}/${EWALLET_ICONS[walletBrand]}`;
-  }
-
-  // `manual_transfer` is a legacy alias and `manual_bank_lainnya` is the
-  // generic fallback — neither has a brand mark. Returning null here is what
-  // tells the caller to render its initials instead of a broken image.
-  return null;
 }
 
 /**
@@ -151,4 +112,7 @@ export function productIcon({ gameSlug, productSlug }) {
   return null;
 }
 
-export { GAME_ICONS, TELCO_ICONS, BANK_ICONS, EWALLET_ICONS };
+// paymentIcon/walletIcon live in payment-icons.js (client-safe; this module
+// pulls a node:fs scan). Re-exported so existing imports keep working.
+export { paymentIcon, walletIcon, BANK_ICONS, EWALLET_ICONS } from "./payment-icons.js";
+export { GAME_ICONS, TELCO_ICONS };

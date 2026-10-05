@@ -1,7 +1,7 @@
 // ============================================================================
 // Password hashing.
 //
-// bcrypt (via bcryptjs — pure JS, no native build step) with cost 12.
+// bcrypt (via bcryptjs, pure JS, no native build step) with cost 12.
 // Explicitly NOT: plaintext, MD5, SHA-1, SHA-256, or a home-grown scheme.
 //
 // bcrypt truncates input at 72 bytes, so the validation layer rejects longer
@@ -9,7 +9,7 @@
 // ============================================================================
 import bcrypt from "bcryptjs";
 
-/** Cost factor. 12 ≈ 250ms on current hardware — slow enough to matter, fast enough for login. */
+/** Cost factor. 12 ≈ 250ms on current hardware: slow enough to matter, fast enough for login. */
 const COST = Number(process.env.BCRYPT_COST || 12);
 
 /** A hash of a random string, used to equalise timing when a user is absent. */
@@ -36,7 +36,7 @@ export async function verifyPassword(plain, hash) {
  * Burn the same amount of CPU as a real comparison.
  *
  * Without this, "email not found" returns in ~1ms while a real account takes
- * ~250ms — a timing oracle that enumerates registered emails. Called on the
+ * ~250ms, a timing oracle that enumerates registered emails. Called on the
  * user-not-found branch of login.
  */
 export async function equaliseTiming() {
@@ -65,7 +65,7 @@ export function assessPasswordStrength(password) {
   }
 
   // A tiny blocklist. A real deployment should swap this for a breached-password
-  // corpus check (k-anonymity range query) — noted in the security checklist.
+  // corpus check (k-anonymity range query), noted in the security checklist.
   const common = new Set([
     "password", "password1", "password123", "12345678", "123456789",
     "qwerty123", "iloveyou", "admin123", "letmein123", "itopup123",

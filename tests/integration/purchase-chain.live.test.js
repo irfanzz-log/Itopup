@@ -1,6 +1,6 @@
 // Verify the FULL purchase chain after a real sync:
 //   provider SKU → ProviderProduct → ProductVariant → Product → Game
-// and that selectProviderMapping() — the function checkout calls — returns a
+// and that selectProviderMapping(), the function checkout calls, returns a
 // mapping. If it returns null, checkout throws ITP_PRODUCT_UNAVAILABLE, which is
 // exactly the "tidak bisa melakukan pembelian" symptom.
 import { describe, it, expect } from "vitest";
@@ -30,7 +30,7 @@ describe("melostore purchase chain (live)", () => {
 
     // The seed deliberately leaves the provider DISABLED until integration is
     // verified. selectProviderMapping only considers ACTIVE providers, so flip
-    // it — this is the operator action the admin panel performs.
+    // it, this is the operator action the admin panel performs.
     await prisma.provider.update({
       where: { code: "melostore" },
       data: { status: "ACTIVE" },
@@ -84,7 +84,7 @@ describe("melostore purchase chain (live)", () => {
     // provider SKU is `out_of_stock` (all of Genshin, right now) reaches
     // checkout with an empty providerProducts array and is correctly refused.
     // Counting without the filter reports Genshin as purchasable and overstates
-    // the result — a test that lies in the optimistic direction is worse than no
+    // the result, a test that lies in the optimistic direction is worse than no
     // test.
     const allVariants = await prisma.productVariant.findMany({
       include: {

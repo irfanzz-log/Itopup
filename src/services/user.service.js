@@ -5,14 +5,17 @@
 // is exactly one code path per security-sensitive operation.
 //
 // Never returns `passwordHash`. Every read goes through a projection that omits
-// it — the type system cannot help in plain JS, so the discipline is structural.
+// it. The type system cannot help in plain JS, so the discipline is structural.
 // ============================================================================
 import { prisma } from "../lib/db.js";
 import { AppError } from "../lib/errors.js";
 import { AUDIT, ROLES } from "../lib/constants.js";
 import {
-  parse, registerSchema, loginSchema, profileUpdateSchema, changePasswordSchema,
+  parse, registerSchema, loginSchema, profileUpdateSchema, changePasswordSchema, registerOtpSchema,
 } from "../lib/validation.js";
+import {
+  issueOtp, sendOtpEmail, verifyOtp,
+} from "./otp.service.js";
 import {
   assessPasswordStrength, equaliseTiming, hashPassword, verifyPassword,
 } from "../lib/auth/password.js";
@@ -27,7 +30,18 @@ const SAFE_USER = PUBLIC_USER_SELECT;
 
 // ── Registration / login ────────────────────────────────────────────────────
 
-export async function registerUser(input, request = {}) {
+/**
+ * Stage one of registration: validate the form and send a code.
+ *
+ * The account is NOT created here. The form is held on the OTP row (already
+ * server-side, already the thing the code guards) and committed only when the
+ * code is confirmed by `confirmRegistration`. This keeps registration a single
+ * secret-gated step: nothing exists to log into until the email is proven
+ * reachable.
+ *
+ * @returns {Promise<{ sent: boolean }>} false when SMTP refused the message
+ */
+export async function requestRegistration(input, request = {}) {
   const { name, email, password, phone } = parse(registerSchema, input);
 
   const strength = assessPasswordStrength(password);
@@ -37,11 +51,10 @@ export async function registerUser(input, request = {}) {
     });
   }
 
+  // Check before sending, so a typo'd address does not cost an email and a
+  // code. Generic on purpose, same as the duplicate check below.
   const existing = await prisma.user.findUnique({ where: { email }, select: { id: true } });
   if (existing) {
-    // Deliberately generic: a precise "email already registered" turns the
-    // register form into an account-enumeration oracle. The audit log records
-    // the real reason for operators.
     await writeAudit({
       action: AUDIT.REGISTER,
       metadata: { email, outcome: "duplicate" },
@@ -50,13 +63,70 @@ export async function registerUser(input, request = {}) {
     throw new AppError("ITP_CONFLICT", "Email sudah terdaftar. Silakan masuk atau gunakan email lain.");
   }
 
+  const code = await issueOtp({
+    subject: email,
+    purpose: "REGISTER",
+    ip: request.ip ?? null,
+    // passwordHash, not password: the row is already a hashed-credential store.
+    payload: { name, email, passwordHash: await hashPassword(password), phone: phone ?? null },
+  });
+
+  const sent = await sendOtpEmail({ to: email, code });
+  if (!sent) {
+    // The code exists but the user cannot receive it, so it is useless. Remove
+    // it rather than leaving a row that would let a later /verify-otp call
+    // create an account the owner cannot sign into.
+    await prisma.emailOtp.deleteMany({ where: { subject: email, purpose: "REGISTER" } });
+    throw new AppError("ITP_OTP_MAIL_UNAVAILABLE");
+  }
+
+  await writeAudit({
+    action: AUDIT.REGISTER,
+    metadata: { email, outcome: "otp_sent" },
+    request,
+  });
+
+  return { sent };
+}
+
+/**
+ * Stage two: confirm the code and create the account.
+ *
+ * The caller has already parsed and strength-checked the password in stage one;
+ * here we only trust what the OTP row carries, which is server-authored.
+ *
+ * @returns {Promise<Object>} the created user, public projection
+ */
+export async function confirmRegistration(input, request = {}) {
+  const { email, code } = parse(registerOtpSchema, input);
+
+  const row = await verifyOtp({ subject: email, purpose: "REGISTER", code });
+  const payload = row.payload ?? {};
+
+  // The account must not already exist by the time the code is confirmed: a
+  // user could have registered the same address through another path while the
+  // code was outstanding.
+  const existing = await prisma.user.findUnique({ where: { email }, select: { id: true } });
+  if (existing) {
+    throw new AppError("ITP_CONFLICT", "Email sudah terdaftar. Silakan masuk.");
+  }
+
+  if (!payload.name || !payload.passwordHash) {
+    // The row predates this flow or was created by a different one. The user
+    // must re-request: guessing at a partial payload would create a broken
+    // account.
+    throw new AppError("ITP_OTP_NOT_SENT", "Pendaftaran sudah kedaluwarsa. Silakan daftar ulang.");
+  }
+
   const user = await prisma.user.create({
     data: {
-      name,
+      name: payload.name,
       email,
-      phone: phone ?? null,
-      passwordHash: await hashPassword(password),
+      phone: payload.phone ?? null,
+      passwordHash: payload.passwordHash,
       role: ROLES.MEMBER,
+      // The code reached the address, so it is verified by construction.
+      emailVerified: true,
     },
     select: SAFE_USER,
   });
@@ -66,7 +136,7 @@ export async function registerUser(input, request = {}) {
     actor: { id: user.id, role: user.role },
     targetType: "User",
     targetId: user.id,
-    metadata: { email },
+    metadata: { email, outcome: "verified" },
     request,
   });
 
@@ -87,9 +157,18 @@ export async function loginUser(input, request = {}) {
     select: { ...SAFE_USER, passwordHash: true, sessionVersion: true },
   });
 
-  if (!user) {
+  if (!user || !user.passwordHash) {
+    // No password on the account: it was created via Google OAuth and the user
+    // never finished the set-password step. bcrypt.compare() would also throw
+    // on null, so this guard is what keeps the timing equalisation below
+    // running instead of a 500. The message is the same as a wrong password on
+    // purpose: "which emails are registered" is not the login page's to tell.
     await equaliseTiming();
-    await writeAudit({ action: AUDIT.LOGIN_FAILED, metadata: { email, reason: "no_such_user" }, request });
+    await writeAudit({
+      action: AUDIT.LOGIN_FAILED,
+      metadata: user ? { email, reason: "passwordless_account" } : { email, reason: "no_such_user" },
+      request,
+    });
     throw new AppError("ITP_INVALID_CREDENTIALS");
   }
 
@@ -187,7 +266,7 @@ export async function updateProfile(userId, input, request = {}) {
 /**
  * Change your own password.
  *
- * Invalidates every OTHER session but keeps the current one usable — otherwise
+ * Invalidates every OTHER session but keeps the current one usable. Otherwise,
  * the member is logged out of the tab they just used to change it, which reads
  * as a bug.
  */
@@ -199,6 +278,16 @@ export async function changeOwnPassword(userId, input, request = {}) {
     select: { id: true, role: true, passwordHash: true },
   });
   if (!user) throw new AppError("ITP_NOT_FOUND", "Akun tidak ditemukan.");
+
+  if (!user.passwordHash) {
+    // The account has no password to change because it was created via Google
+    // and the set-password step was never completed. Tell the member how to
+    // fix it instead of crashing on a null compare.
+    throw new AppError(
+      "ITP_INVALID_ACCOUNT",
+      "Akun Anda belum memiliki password. Masuk dengan Google lalu buat password dari halaman pendaftaran.",
+    );
+  }
 
   if (!(await verifyPassword(currentPassword, user.passwordHash))) {
     throw new AppError("ITP_INVALID_CREDENTIALS", "Password saat ini salah.");
@@ -450,7 +539,7 @@ export async function changeMemberRole({ actor, userId, role, request = {} }) {
 
 /**
  * Paginated member list with aggregate spend.
- * Search is a parameterised Prisma `contains` — never string-interpolated SQL.
+ * Search is a parameterised Prisma `contains`, never string-interpolated SQL.
  */
 export async function listMembers({ page = 1, limit = 20, search = "", status = null, role = null } = {}) {
   const take = Math.min(100, Math.max(1, Number(limit) || 20));

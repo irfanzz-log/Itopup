@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================================
-// TopupForm — the interactive top-up flow.
+// TopupForm, the interactive top-up flow.
 //
 // This is the ONE client component in the purchase path, and it is deliberately
 // dumb about money: it displays prices the server sent and posts a `variantId`.
@@ -15,22 +15,50 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Alert, Badge, Spinner } from "@/components/ui/primitives";
 import StepIndicator from "@/components/ui/StepIndicator";
-import { apiPost } from "@/lib/api-client";
+import { apiPost, apiGet } from "@/lib/api-client";
 import { deriveIdempotencyKey } from "@/lib/checkout-key";
+import { isSecretField, normalisePhoneId, phoneErrorMessage } from "@/config/input-fields";
+import { phoneMatchesOperator, OPERATOR_DISPLAY_NAME } from "@/config/operators";
 import { formatIDR, formatNumber } from "@/lib/format";
 import { filterMethodsForPurchase } from "@/config/payment";
-import { paymentIcon } from "@/config/icons.js";
+import { paymentIcon, walletIcon } from "@/config/payment-icons.js";
+import MyVouchers from "@/components/topup/MyVouchers.jsx";
 
 /** Draft persisted across a login redirect so the customer does not lose input. */
 const draftKey = (slug) => `itp:topup-draft:${slug}`;
 
-export default function TopupForm({ game, products, paymentMethods }) {
+/**
+ * Server-resolved promo prices for every nominal on this page. Populated once
+ * from the `initialPrices` prop so the grid's first paint is already correct
+ * (see resolveAutoDiscountBatch) and reused if the component re-mounts.
+ */
+const initialPriceCache = new Map();
+
+export default function TopupForm({ game, products, paymentMethods, initialPrices = {} }) {
   const router = useRouter();
 
   const [productId, setProductId] = useState(products[0]?.id ?? null);
   const [variantId, setVariantId] = useState(null);
+
+  // The server resolved every nominal's promo price before render. Seed the
+  // cache once so the grid paints correctly even if the component re-mounts.
+  useEffect(() => {
+    if (initialPrices && typeof initialPrices === "object") {
+      for (const [id, price] of Object.entries(initialPrices)) {
+        initialPriceCache.set(id, price);
+      }
+    }
+  }, [initialPrices]);
   const [fields, setFields] = useState(() => blankFields(game.inputFields));
   const [promoCode, setPromoCode] = useState("");
+  // Server-authoritative checkout preview: normal → auto discount → voucher →
+  // fee → total. Fetched so the struck-through prices and the total the
+  // customer commits to match what the order will record.
+  const [preview, setPreview] = useState(null);
+  // A voucher claim the customer picked from "Voucher Saya". Spent at checkout
+  // by id, the code path and the claim path are two ways into the same promo,
+  // and only one may be used per order.
+  const [selectedClaimId, setSelectedClaimId] = useState(null);
   const [paymentMethod, setPaymentMethod] = useState(paymentMethods[0]?.key ?? null);
 
   const [validation, setValidation] = useState({ state: "idle", data: null, error: null });
@@ -38,6 +66,10 @@ export default function TopupForm({ game, products, paymentMethods }) {
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState(null);
   const [fieldErrors, setFieldErrors] = useState({});
+  // Opt-in to storing the game login the customer just typed. Off by default:
+  // keeping a password is the customer's call, and the checkbox only renders for
+  // a game whose contract declares a credential field.
+  const [saveCredential, setSaveCredential] = useState(false);
 
   const product = useMemo(
     () => products.find((p) => p.id === productId) ?? products[0] ?? null,
@@ -56,7 +88,7 @@ export default function TopupForm({ game, products, paymentMethods }) {
   // refused at the end.
   //
   // NOT done here: filtering e-wallet methods by the game being topped up. A
-  // payment method is an instrument — paying diamonds from DANA is normal,
+  // payment method is an instrument, paying diamonds from DANA is normal,
   // and the old `walletSlug` filter hid every other wallet at checkout.
   const offeredMethods = useMemo(
     () =>
@@ -79,13 +111,23 @@ export default function TopupForm({ game, products, paymentMethods }) {
   // Methods that exist but are hidden for THIS purchase because the amount is
   // below their floor. Computed from the full list on purpose: `minOffered`
   // above is the minimum among the methods that SURVIVED the filter, so it can
-  // never be greater than the amount — using it to explain the removal would
+  // never be greater than the amount, using it to explain the removal would
   // produce a message that never renders.
   const hiddenByAmount = useMemo(() => {
     const amount = Number(variant?.sellingPrice ?? 0);
     if (!amount) return [];
     return paymentMethods.filter((m) => amount < Number(m.minAmount ?? 0));
   }, [paymentMethods, variant?.sellingPrice]);
+
+  // ── Deep-link a specific operator ──────────────────────────────────────────
+  // REMOVED: the operator now lives in the PATH (/topup/pulsa/<operator>) and
+  // this page receives exactly one product, so there is nothing to deep-link.
+  //
+  // The effect this replaced was also the reason an operator could not be
+  // changed: it keyed on the ?operator= query string AND on productId, so
+  // clicking a different operator tab set productId, the effect re-ran, it
+  // re-read ?operator= from the URL, and snapped the selection back. The choice
+  // looked switchable and was not.
 
   // ── Restore a draft saved before a login redirect ────────────────────────
   useEffect(() => {
@@ -99,9 +141,21 @@ export default function TopupForm({ game, products, paymentMethods }) {
       if (draft?.promoCode) setPromoCode(draft.promoCode);
       if (draft?.paymentMethod) setPaymentMethod(draft.paymentMethod);
     } catch {
-      // A corrupt draft is not worth surfacing — start clean.
+      // A corrupt draft is not worth surfacing, start clean.
     }
   }, [game.slug]);
+
+  // A restored draft can point at a variant that went out of stock while the
+  // customer was away, the grid no longer shows it, so a restored selection
+  // would be an invisible state the checkout would then reject. Clear it here
+  // so the page and the grid always agree.
+  useEffect(() => {
+    if (!variantId || !product?.variants) return;
+    const stillAvailable = product.variants.some(
+      (v) => v.id === variantId && (v.stock === null || v.stock > 0)
+    );
+    if (!stillAvailable) setVariantId(null);
+  }, [variantId, product?.variants]);
 
   const saveDraft = useCallback(() => {
     try {
@@ -114,6 +168,32 @@ export default function TopupForm({ game, products, paymentMethods }) {
     }
   }, [game.slug, productId, variantId, fields, promoCode, paymentMethod]);
 
+  // ── Checkout preview: what the customer will actually pay ──────────────
+  // Re-run on every input that changes the price: the nominal (each sits in its
+  // own scope), the voucher the customer picked, and the payment method (the
+  // admin fee is charged on the post-discount amount).
+  useEffect(() => {
+    let cancelled = false;
+
+    async function load() {
+      if (!variantId) {
+        setPreview(null);
+        return;
+      }
+      const params = new URLSearchParams({ variantId });
+      if (selectedClaimId) params.set("voucherClaimId", selectedClaimId);
+      if (paymentMethod) params.set("paymentMethod", paymentMethod);
+      const result = await apiGet(`/api/topup/price?${params.toString()}`);
+      if (cancelled) return;
+      setPreview(result.ok ? result.data : null);
+    }
+
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [variantId, selectedClaimId, paymentMethod]);
+
   const clearDraft = useCallback(() => {
     try {
       sessionStorage.removeItem(draftKey(game.slug));
@@ -123,12 +203,18 @@ export default function TopupForm({ game, products, paymentMethods }) {
   }, [game.slug]);
 
   // The account is verified as part of "Lanjut ke Pembayaran", so this form never
-  // sits on a "pembayaran" step — creating the order navigates to the order page.
+  // sits on a "pembayaran" step, creating the order navigates to the order page.
   const step = !variant ? "produk" : "data";
 
   // ── Input handling ───────────────────────────────────────────────────────
   function updateField(key, value) {
-    setFields((prev) => ({ ...prev, [key]: value }));
+    // A phone number is canonicalised the moment it is typed. The field stores
+    // and displays one shape only, the local 08… form the provider expects,
+    // so the field can never disagree with itself and the customer never sees
+    // their own digits rearranged between keystrokes. Whatever they type
+    // (0812…, 812…, +62 812…, 62 812…) lands as 0812…, which is also the shape
+    // the server validates and stores, so the client and server cannot drift.
+    setFields((prev) => ({ ...prev, [key]: key === "phoneNumber" ? normalisePhoneId(value) : value }));
     setFieldErrors((prev) => (prev[key] ? { ...prev, [key]: undefined } : prev));
     // Any change invalidates a previous validation result: the account that was
     // just verified is no longer the account in the form.
@@ -144,7 +230,7 @@ export default function TopupForm({ game, products, paymentMethods }) {
   /**
    * Ask the server whether the account exists.
    *
-   * Called from `handleCheckout` — NOT from a button of its own. The answer is
+   * Called from `handleCheckout`, NOT from a button of its own. The answer is
    * only useful at the moment the customer commits, and a separate "Cek Akun"
    * button let them check, change the nominal, and then reach checkout with a
    * stale verification. The result is returned rather than only written to
@@ -163,7 +249,7 @@ export default function TopupForm({ game, products, paymentMethods }) {
     if (!result.ok) {
       // An outage is NOT "account not found". Telling a customer to fix a
       // correct player id because the provider was unreachable is how they
-      // retype a working id forever — so the provider's own message is shown.
+      // retype a working id forever, so the provider's own message is shown.
       setValidation({ state: "error", data: null, error: result.error });
       return { ok: false, error: result.error };
     }
@@ -186,11 +272,11 @@ export default function TopupForm({ game, products, paymentMethods }) {
 
   // ── Checkout ─────────────────────────────────────────────────────────────
   /**
-   * "Lanjut ke Pembayaran" — validate, verify the account, then create the order.
+   * "Lanjut ke Pembayaran", validate, verify the account, then create the order.
    *
    * ORDER OF OPERATIONS IS THE POINT:
    *   1. local field check (instant, no network),
-   *   2. server-side account verification — the account details are shown HERE,
+   *   2. server-side account verification, the account details are shown HERE,
    *      and an account that does not exist stops the flow with the id/zone
    *      fields flagged,
    *   3. only then is the order created.
@@ -202,7 +288,7 @@ export default function TopupForm({ game, products, paymentMethods }) {
     if (submitting || checking) return;
 
     // ── 1. Local field check ───────────────────────────────────────────────
-    const localErrors = validateLocally(game.inputFields, fields);
+    const localErrors = validateLocally(game.inputFields, fields, product?.slug);
     if (Object.keys(localErrors).length > 0) {
       setFieldErrors(localErrors);
       setFormError({
@@ -225,7 +311,7 @@ export default function TopupForm({ game, products, paymentMethods }) {
 
       if (!verified.ok) {
         // Stop here. The customer fixes User ID / Zone ID and presses the same
-        // button again — they never reach a payment step for an account that
+        // button again, they never reach a payment step for an account that
         // does not exist.
         setFieldErrors(verified.fieldErrors ?? {});
         setFormError(verified.error);
@@ -243,7 +329,7 @@ export default function TopupForm({ game, products, paymentMethods }) {
     // method, then changed the nominal back and forth could submit the same key
     // with a different `paymentMethod`/`fields` payload. The server compares the
     // payload hash against the stored order and answers ITP_IDEMPOTENCY_CONFLICT
-    // ("Permintaan tidak cocok dengan transaksi sebelumnya") — a dead end on a
+    // ("Permintaan tidak cocok dengan transaksi sebelumnya"), a dead end on a
     // purchase the customer was entitled to make.
     //
     // With a payload-derived key, the same payload is always the same key (so a
@@ -262,6 +348,11 @@ export default function TopupForm({ game, products, paymentMethods }) {
       variantId,
       fields: trimValues(fields),
       promoCode: promoCode.trim() || undefined,
+      voucherClaimId: selectedClaimId || undefined,
+      // Only sent when the customer opted in. The server stores the login and
+      // an encrypted copy of the secret; without this the secret is used for
+      // the one transaction and discarded.
+      saveCredential: hasCredentialField && saveCredential ? true : undefined,
       paymentMethod,
       idempotencyKey,
     });
@@ -292,6 +383,11 @@ export default function TopupForm({ game, products, paymentMethods }) {
 
   const disabled = !variant || !paymentMethod || submitting || checking;
   const canValidate = game.supportsValidation && game.inputFields.length > 0;
+
+  // A game whose contract declares a credential field is a "login game": the
+  // customer is typing their own account password, so the save-login checkbox
+  // and the security notice render. Games without it are completely unchanged.
+  const hasCredentialField = game.inputFields.some((def) => def.secret);
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
@@ -337,46 +433,65 @@ export default function TopupForm({ game, products, paymentMethods }) {
           ) : null}
 
           {product?.variants.length ? (
-            <ul className="mt-4 grid grid-cols-2 gap-2.5 sm:grid-cols-3 xl:grid-cols-4">
-              {product.variants.map((v) => {
-                const selected = v.id === variantId;
-                const outOfStock = v.stock !== null && v.stock <= 0;
+            (() => {
+              // Out-of-stock variants are REMOVED, not greyed out.
+              //
+              // A disabled tile still occupies a slot the customer reads as a
+              // choice, and "Stok habis" next to a nominal they wanted invites
+              // the question "kapan balik?", which this page cannot answer.
+              // The product page is only useful as a list of what can be bought
+              // right now, so that is all it shows. The count is kept for the
+              // empty state below, so a product where everything ran dry still
+              // explains itself instead of rendering a blank grid.
+              const available = product.variants.filter(
+                (v) => v.stock === null || v.stock > 0
+              );
+              if (!available.length) {
                 return (
-                  <li key={v.id}>
-                    <button
-                      type="button"
-                      disabled={outOfStock}
-                      aria-pressed={selected}
-                      onClick={() => selectVariant(v.id)}
-                      className={`relative flex h-full w-full flex-col items-start gap-1 rounded-[var(--radius-control)] border p-3 text-left transition-colors ${
-                        selected
-                          ? "border-brand-500 bg-brand-soft ring-1 ring-brand-500"
-                          : outOfStock
-                            ? "cursor-not-allowed border-border bg-surface-muted opacity-60"
-                            : "border-border bg-surface hover:border-brand-400"
-                      }`}
-                    >
-                      {selected ? (
-                        <span className="absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-full bg-brand-600 text-white">
-                          <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" aria-hidden="true">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M20 6 9 17l-5-5" />
-                          </svg>
-                        </span>
-                      ) : null}
-                      <span className="pr-6 text-sm font-semibold leading-snug text-foreground">
-                        {v.name}
-                      </span>
-                      <span className="text-sm font-bold text-brand-700 dark:text-brand-300">
-                        {formatIDR(v.sellingPrice)}
-                      </span>
-                      {outOfStock ? (
-                        <span className="text-xs font-medium text-foreground-subtle">Stok habis</span>
-                      ) : null}
-                    </button>
-                  </li>
+                  <p className="mt-4 text-sm text-foreground-muted">
+                    Produk sedang tidak tersedia.
+                  </p>
                 );
-              })}
-            </ul>
+              }
+              return (
+                <ul className="mt-4 grid grid-cols-2 gap-2.5 sm:grid-cols-3 xl:grid-cols-4">
+                  {available.map((v) => {
+                    const selected = v.id === variantId;
+                    return (
+                      <li key={v.id}>
+                        <button
+                          type="button"
+                          aria-pressed={selected}
+                          onClick={() => selectVariant(v.id)}
+                          className={`relative flex h-full w-full flex-col items-start gap-1 rounded-[var(--radius-control)] border p-3 text-left transition-colors ${
+                            selected
+                              ? "border-brand-500 bg-brand-soft ring-1 ring-brand-500"
+                              : "border-border bg-surface hover:border-brand-400"
+                          }`}
+                        >
+                          {selected ? (
+                            <span className="absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-full bg-brand-600 text-white">
+                              <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" aria-hidden="true">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M20 6 9 17l-5-5" />
+                              </svg>
+                            </span>
+                          ) : null}
+                          <span className="pr-6 text-sm font-semibold leading-snug text-foreground">
+                            {v.name}
+                          </span>
+                          {/* Harga per nominal: coret harga normal, tampilkan harga promo */}
+                          <VariantTilePrice
+                            variantId={v.id}
+                            basePrice={v.sellingPrice}
+                            serverPrice={initialPrices[v.id]}
+                          />
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              );
+            })()
           ) : (
             <p className="mt-4 text-sm text-foreground-muted">Produk sedang tidak tersedia.</p>
           )}
@@ -399,9 +514,17 @@ export default function TopupForm({ game, products, paymentMethods }) {
                 <input
                   id={`f-${def.key}`}
                   name={def.key}
-                  type={def.inputType || "text"}
+                  type={def.type || "text"}
                   inputMode={def.inputMode || "text"}
                   autoComplete={def.autoComplete || "off"}
+                  // The field holds the canonical 08… form (updateField
+                  // normalises on input), so what it shows IS what it stores,
+                  // there is no separate display transform to drift out of sync.
+                  // That transform used to be applied here, and it was the bug:
+                  // the browser enforced maxLength on the FORMATTED "+62 …"
+                  // value, which is two characters longer than the number, so a
+                  // 12-digit number like 085788513910 was silently truncated to
+                  // 0857885139 at the point where it visually filled the box.
                   placeholder={def.placeholder || ""}
                   maxLength={def.maxLength || 64}
                   value={fields[def.key] ?? ""}
@@ -427,6 +550,25 @@ export default function TopupForm({ game, products, paymentMethods }) {
             ))}
           </div>
 
+          {/* A game-login field is the customer's own credential. Offer to
+              remember it so the next purchase is one click, opt-in only, never
+              defaulted on: storing a password is a decision the customer makes,
+              not one the form makes for them. */}
+          {hasCredentialField ? (
+            <label className="mt-4 flex items-start gap-2.5 text-sm text-foreground-muted">
+              <input
+                type="checkbox"
+                checked={saveCredential}
+                onChange={(e) => setSaveCredential(e.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-border text-brand-600 focus:ring-brand-500"
+              />
+              <span>
+                Simpan login akun game ini untuk pembelian berikutnya. Password disimpan
+                terenkripsi dan bisa dihapus kapan saja dari menu Transaksi.
+              </span>
+            </label>
+          ) : null}
+
           {canValidate ? (
             <p className="mt-4 text-xs text-foreground-subtle">
               Data akun dicek otomatis ke penyedia saat Anda menekan “Lanjut ke Pembayaran”.
@@ -439,7 +581,7 @@ export default function TopupForm({ game, products, paymentMethods }) {
             </p>
           )}
 
-          {/* A failed check stays on this page — that is the whole point. The
+          {/* A failed check stays on this page, that is the whole point. The
               SUCCESS case never renders here: it navigates straight to the order
               page, where the verified account name is shown next to the amount. */}
           {validation.state === "error" ? (
@@ -515,6 +657,28 @@ export default function TopupForm({ game, products, paymentMethods }) {
                           <span className="mt-0.5 block text-xs text-foreground-muted">
                             {method.description || feeLabel(method)}
                           </span>
+                          {/* QRIS is one method that accepts many wallets; showing
+                              the brands is what tells the customer their own app
+                              works here. This replaced the per-wallet options. */}
+                          {Array.isArray(method.supportedWallets) && method.supportedWallets.length ? (
+                            <span className="mt-2 flex flex-wrap items-center gap-1.5">
+                              {method.supportedWallets.map((wallet) => {
+                                const walletArt = walletIcon(wallet);
+                                if (!walletArt) return null;
+                                return (
+                                  <img
+                                    key={wallet}
+                                    src={walletArt}
+                                    alt=""
+                                    title={wallet.charAt(0).toUpperCase() + wallet.slice(1)}
+                                    className="h-6 w-12 rounded bg-white/80 object-contain px-1 dark:bg-white/15"
+                                    loading="lazy"
+                                    decoding="async"
+                                  />
+                                );
+                              })}
+                            </span>
+                          ) : null}
                         </span>
                       </label>
                       );
@@ -537,22 +701,29 @@ export default function TopupForm({ game, products, paymentMethods }) {
             <Row label="Produk" value={product?.name ?? "—"} />
             <Row label="Nominal" value={variant?.name ?? "Belum dipilih"} />
             {game.inputFields.map((def) =>
-              fields[def.key] ? (
+              // A secret is never echoed, not even masked: a length is a
+              // confirmation of a guess, and the summary rail is not where the
+              // customer needs it. The order page shows the login only.
+              isSecretField(def) ? null : fields[def.key] ? (
                 <Row key={def.key} label={def.label} value={fields[def.key]} />
               ) : null
             )}
           </dl>
 
           <div className="mt-4 border-t border-border pt-4">
-            <div className="flex items-baseline justify-between">
-              <span className="text-sm text-foreground-muted">Harga</span>
-              <span className="text-lg font-extrabold text-foreground">
-                {variant ? formatIDR(variant.sellingPrice) : "—"}
-              </span>
-            </div>
-            <p className="mt-1 text-xs text-foreground-subtle">
-              Biaya admin dan total akhir dihitung di halaman pembayaran.
-            </p>
+            {variant ? (
+              <PriceBlock preview={preview} autoDiscount={preview?.autoDiscount ?? null} />
+            ) : (
+              <div className="flex items-baseline justify-between">
+                <span className="text-sm text-foreground-muted">Harga</span>
+                <span className="text-lg font-extrabold text-foreground">—</span>
+              </div>
+            )}
+
+            {/* ── Simulasi total sebelum masuk pembayaran ─────────────────── */}
+            {variant ? (
+              <TotalPreview preview={preview} hasVoucher={Boolean(selectedClaimId || promoCode)} />
+            ) : null}
           </div>
 
           <div className="mt-4">
@@ -569,6 +740,13 @@ export default function TopupForm({ game, products, paymentMethods }) {
               className="field uppercase placeholder:normal-case"
             />
           </div>
+
+          {/* ── Voucher Saya: pilih voucher yang sudah diklaim ──────────────── */}
+          <MyVouchers
+            selectedClaimId={selectedClaimId}
+            onSelect={setSelectedClaimId}
+            onCodeResolved={setPromoCode}
+          />
 
           {formError ? (
             <div className="mt-4">
@@ -608,6 +786,142 @@ export default function TopupForm({ game, products, paymentMethods }) {
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
+
+/**
+ * Price block: normal price struck through, discounted price underneath.
+ *
+ * The struck-through price is the variant's list price; the discounted price is
+ * the AUTO ("diskon manual") discount resolved from the variant's scope. The
+ * server recomputes both at checkout, this is a display, never a quote the
+ * client controls.
+ */
+function PriceBlock({ preview, autoDiscount }) {
+  const normal = preview?.normal;
+  const hasDiscount = Boolean(autoDiscount && autoDiscount.discount > 0);
+
+  if (!hasDiscount) {
+    return (
+      <div className="flex items-baseline justify-between">
+        <span className="text-sm text-foreground-muted">Harga</span>
+        <span className="text-lg font-extrabold text-foreground">{formatIDR(normal)}</span>
+      </div>
+    );
+  }
+
+  const final = Math.max(0, normal - autoDiscount.discount);
+
+  return (
+    <div>
+      {/* Normal price, small, struck through, in a loud colour. */}
+      <div className="flex items-baseline justify-between">
+        <span className="text-xs text-foreground-subtle">Harga normal</span>
+        <span className="text-sm font-medium text-danger-fg line-through decoration-2">
+          {formatIDR(normal)}
+        </span>
+      </div>
+      {/* Discounted price, the real one, full size. */}
+      <div className="mt-1 flex items-baseline justify-between gap-2">
+        <span className="text-sm font-semibold text-foreground">Harga diskon</span>
+        <span className="text-lg font-extrabold text-brand-600 dark:text-brand-400">
+          {formatIDR(final)}
+        </span>
+      </div>
+      <p className="mt-1 text-[11px] text-foreground-subtle">
+        {autoDiscount.promo?.title ?? "Diskon otomatis"} berlaku untuk pembelian ini.
+      </p>
+    </div>
+  );
+}
+
+/**
+ * Price on a nominal tile: struck-through list price + promo price.
+ *
+ * The discount is a property of the nominal's own scope (a game-level promo
+ * covers all nominals; a nominal-level one does not), so the price comes from
+ * the `initialPrices` map the server resolved for the whole grid before paint.
+ * No per-tile request means the grid never flashes a list price that then
+ * changes, the first paint is already the promo price.
+ */
+function VariantTilePrice({ variantId, basePrice, serverPrice }) {
+  const price = serverPrice ?? initialPriceCache.get(variantId) ?? null;
+
+  // No promo for this nominal (or the lookup failed): the honest price is the
+  // list price, shown plainly rather than as a crossed-out pair.
+  if (!price || !price.hasDiscount) {
+    return (
+      <span className="text-sm font-bold text-brand-700 dark:text-brand-300">
+        {formatIDR(basePrice)}
+      </span>
+    );
+  }
+
+  return (
+    <span className="flex flex-col gap-0.5">
+      <span className="text-[11px] font-medium leading-none text-danger-fg line-through decoration-1">
+        {formatIDR(basePrice)}
+      </span>
+      <span className="text-sm font-bold leading-none text-brand-700 dark:text-brand-300">
+        {formatIDR(Math.max(0, basePrice - price.discount))}
+      </span>
+    </span>
+  );
+}
+
+/**
+ * The full simulation: what the customer pays, broken down.
+ *
+ * Every line comes from the server preview, so the numbers here are the same
+ * ones the order will record. Lines that do not apply (no voucher picked, no
+ * admin fee) are omitted rather than shown as "Rp 0", a zero row reads as a
+ * charge that was waived, which misleads.
+ */
+function TotalPreview({ preview, hasVoucher }) {
+  // Until the first preview arrives the summary must not invent numbers.
+  if (!preview) {
+    return (
+      <div className="mt-4">
+        <div className="flex items-center gap-2 text-xs text-foreground-subtle">
+          <Spinner /> Menghitung total…
+        </div>
+      </div>
+    );
+  }
+
+  const showVoucher = hasVoucher || preview.voucherDiscount > 0;
+  const voucherIneligible = hasVoucher && !preview.voucherEligible;
+
+  return (
+    <div className="mt-4">
+      <div className="space-y-1.5 text-sm">
+        {showVoucher ? (
+          <div className="flex items-baseline justify-between">
+            <span className="text-foreground-muted">Potongan voucher</span>
+            {voucherIneligible ? (
+              <span className="max-w-[55%] text-right text-xs font-medium text-danger-fg">
+                {preview.voucherReason ?? "Voucher tidak dapat digunakan."}
+              </span>
+            ) : (
+              <span className="font-semibold text-success-fg">
+                −{preview.voucherDiscountLabel}
+              </span>
+            )}
+          </div>
+        ) : null}
+      </div>
+
+      <div className="mt-3 flex items-baseline justify-between border-t border-border pt-3">
+        <span className="text-sm font-semibold text-foreground">Total dibayar</span>
+        <span className="text-xl font-extrabold text-brand-600 dark:text-brand-400">
+          {preview.totalLabel}
+        </span>
+      </div>
+      <p className="mt-1 text-[11px] text-foreground-subtle">
+        Estimasi dihitung server. Biaya admin bergantung metode pembayaran dan
+        ditampilkan saat memilih pembayaran.
+      </p>
+    </div>
+  );
+}
 
 function Row({ label, value }) {
   return (
@@ -653,10 +967,10 @@ function allFieldErrors(defs) {
 
 /**
  * Client-side pre-check. It mirrors `validateFields` in src/config/input-fields.js
- * but is NOT a security control — the same rules run again on the server, which
+ * but is NOT a security control, the same rules run again on the server, which
  * is the only authority. This exists purely to give instant feedback.
  */
-function validateLocally(defs, values) {
+function validateLocally(defs, values, operatorSlug) {
   const errors = {};
   for (const def of defs ?? []) {
     const value = String(values?.[def.key] ?? "").trim();
@@ -664,16 +978,38 @@ function validateLocally(defs, values) {
       if (def.required !== false) errors[def.key] = `${def.label} wajib diisi.`;
       continue;
     }
-    if (def.minLength && value.length < def.minLength) {
-      errors[def.key] = def.errorMessage || `${def.label} minimal ${def.minLength} karakter.`;
+
+    // A phone number is checked on its canonical 08… form, exactly as the
+    // server does (validateFields). Checking the raw text here would make this
+    // pre-check disagree with the authority it mirrors, and disagree with the
+    // field itself, updateField already stores the canonical form, so `value`
+    // is canonical already; this just keeps the two honest if a draft or a
+    // prefilled value ever arrives un-normalised.
+    const tested = def.key === "phoneNumber" ? normalisePhoneId(value) : value;
+
+    if (def.minLength && tested.length < def.minLength) {
+      errors[def.key] = phoneErrorMessage(def, tested) || `${def.label} minimal ${def.minLength} karakter.`;
       continue;
     }
-    if (def.maxLength && value.length > def.maxLength) {
-      errors[def.key] = def.errorMessage || `${def.label} maksimal ${def.maxLength} karakter.`;
+    if (def.maxLength && tested.length > def.maxLength) {
+      errors[def.key] = phoneErrorMessage(def, tested) || `${def.label} maksimal ${def.maxLength} karakter.`;
       continue;
     }
-    if (def.pattern && !new RegExp(def.pattern).test(value)) {
-      errors[def.key] = def.errorMessage || `${def.label} tidak valid.`;
+    if (def.pattern && !new RegExp(def.pattern).test(tested)) {
+      errors[def.key] = phoneErrorMessage(def, tested) || def.errorMessage || `${def.label} tidak valid.`;
+      continue;
+    }
+
+    // A phone number must belong to the operator whose product the customer
+    // selected. Checked locally so the customer never reaches the server,
+    // and therefore never reaches a payment, for a top-up that cannot work.
+    // The server repeats the check; this is the fast path.
+    if (def.key === "phoneNumber" && operatorSlug) {
+      if (!phoneMatchesOperator(value, operatorSlug)) {
+        const expected = OPERATOR_DISPLAY_NAME[operatorSlug] || operatorSlug;
+        errors[def.key] = `Nomor ini bukan nomor ${expected}. Pilih produk yang sesuai dengan operator nomor Anda.`;
+        continue;
+      }
     }
   }
   return errors;
@@ -686,7 +1022,7 @@ function validateLocally(defs, values) {
  * transaksi sebelumnya" dead end: the seed outlived the payload it was created
  * for, so changing the nominal or the payment method and submitting again
  * reused the key with a different body. See src/lib/checkout-key.js for the full
- * explanation — the derivation lives there so it can be unit-tested.
+ * explanation, the derivation lives there so it can be unit-tested.
  */
 function newIdempotencyKey(payload) {
   return deriveIdempotencyKey(payload);

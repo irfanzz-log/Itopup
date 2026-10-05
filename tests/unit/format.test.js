@@ -5,7 +5,10 @@ import {
   formatDate,
   formatDateTime,
   formatDuration,
+  formatRelative,
+  maskEmail,
   maskTail,
+  initials,
 } from "../../src/lib/format.js";
 
 // Regression: these helpers rendered differently on the server and in the
@@ -90,5 +93,44 @@ describe("misc helpers", () => {
   it("masks all but the tail", () => {
     expect(maskTail("1234567890", 4)).toBe("******7890");
     expect(maskTail("12", 4)).toBe("12");
+  });
+
+  it("formats relative times with an explicit now", () => {
+    const now = new Date("2026-09-26T10:00:00Z");
+    const at = (s) => formatRelative(new Date(now.getTime() - s), now.getTime());
+    expect(at(30_000)).toBe("30 detik lalu");
+    expect(at(5 * 60_000)).toBe("5 menit lalu");
+    expect(at(3 * 3_600_000)).toBe("3 jam lalu");
+    expect(at(4 * 86_400_000)).toBe("4 hari lalu");
+  });
+
+  it("formats future times as 'dalam ...'", () => {
+    const now = new Date("2026-09-26T10:00:00Z");
+    const out = formatRelative(new Date(now.getTime() + 10 * 60_000), now.getTime());
+    expect(out).toBe("dalam 10 menit");
+  });
+
+  it("returns a dash for empty/invalid relative input", () => {
+    expect(formatRelative(null)).toBe("-");
+    expect(formatRelative("not-a-date")).toBe("-");
+  });
+
+  it("masks emails for display", () => {
+    // The local part keeps 2 visible chars and ALWAYS at least 2 mask chars,
+    // so a 1-char local is "a**", not "a*" (which would reveal its length).
+    expect(maskEmail("budi@mail.com")).toBe("bu**@mail.com");
+    expect(maskEmail("a@mail.com")).toBe("a**@mail.com");
+  });
+
+  it("returns a dash for invalid email input", () => {
+    expect(maskEmail("not-an-email")).toBe("-");
+    expect(maskEmail(null)).toBe("-");
+  });
+
+  it("takes the first letters of a name", () => {
+    expect(initials("Budi Pratama")).toBe("BP");
+    expect(initials("  Irfan  ")).toBe("I");
+    expect(initials("")).toBe("?");
+    expect(initials(null)).toBe("?");
   });
 });

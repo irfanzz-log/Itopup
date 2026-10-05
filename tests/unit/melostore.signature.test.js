@@ -7,7 +7,7 @@
 //    menggunakan webhook_secret akun Anda."
 //
 // so the test computes the expected digest independently and checks the
-// verifier accepts it — and, more importantly, REJECTS a tampered body.
+// verifier accepts it, and, more importantly, REJECTS a tampered body.
 // ============================================================================
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { createHmac } from "node:crypto";

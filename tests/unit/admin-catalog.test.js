@@ -1,5 +1,5 @@
 // ============================================================================
-// Admin catalogue service — price, SKU swap, and delete rules.
+// Admin catalogue service, price, SKU swap, and delete rules.
 //
 // WHAT EACH TEST LOCKS DOWN
 //
@@ -11,7 +11,7 @@
 //
 // reassignVariantSku
 //   * a code the provider does not list for this nominal is rejected
-//   * a code that IS listed but out of stock is rejected — "successfully"
+//   * a code that IS listed but out of stock is rejected, "successfully"
 //     writing a dead SKU would look fixed in the admin and still be unbuyable
 //   * cost follows the new SKU; selling price follows only when not pinned
 //
@@ -141,7 +141,7 @@ describe("updateVariantPrice", () => {
     });
     expect(result.changed).toBe(true);
 
-    // The audit must carry both values — "price changed" without the numbers
+    // The audit must carry both values, "price changed" without the numbers
     // is useless for reconciling a pricing incident after the fact.
     expect(writeAudit).toHaveBeenCalledWith(
       expect.objectContaining({

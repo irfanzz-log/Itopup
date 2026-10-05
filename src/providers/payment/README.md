@@ -1,4 +1,4 @@
-# Payment provider adapter — how to add one
+# Payment provider adapter: how to add one
 
 No gateway is wired yet. `src/providers/payment/index.js` has an empty registry,
 so `getPaymentProvider()` throws `ITP_PAYMENT_NOT_CONFIGURED` and the checkout
@@ -21,7 +21,7 @@ See `src/providers/payment/contract.js` for the full shapes. In short:
 | Method | Responsibility |
 | --- | --- |
 | `isConfigured()` | true only when every required credential is present |
-| `configurationGaps()` | returns env var **names** that are missing — never values |
+| `configurationGaps()` | returns env var **names** that are missing, never values |
 | `createPayment()` | create the payment, return instructions (VA number / QR / code) |
 | `getPaymentStatus()` | poll by our reference; the reconciliation primitive |
 | `verifyWebhook()` | verify signature FIRST, then parse; return a normalised webhook |
@@ -36,7 +36,7 @@ See `src/providers/payment/contract.js` for the full shapes. In short:
 2. **Timing-safe comparison** for signatures (`crypto.timingSafeEqual`), never `===`.
 3. **A timeout is UNKNOWN, not failed.** Return `PAYMENT_ERROR.TIMEOUT` with
    `unknown: true`; the caller reconciles. Never let a timeout mark a payment
-   failed — the customer may have paid.
+   failed: the customer may have paid.
 4. **Always return a non-empty `eventId`** from `verifyWebhook()`. It is what the
    `WebhookEvent` unique constraint uses to make a replay a no-op. If the gateway
    sends no event id, hash the raw body.
@@ -63,7 +63,7 @@ keep `.env` out of git.
 `src/config/payment.js` lists the internal method keys (va_bca, qris, …), each
 with `enabled: false`. After the adapter maps a method to the gateway's own code
 and the mapping is tested, flip that entry to `enabled: true`. The checkout reads
-this list — it never hardcodes a method.
+this list, and it never hardcodes a method.
 
 ## Testing checklist for a new adapter
 

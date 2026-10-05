@@ -28,7 +28,7 @@ const ThemeContext = createContext({
   toggle: () => {},
 });
 
-/** The blocking script injected into <head>. Kept minimal — it runs before paint. */
+/** The blocking script injected into <head>. Kept minimal, it runs before paint. */
 export const themeInitScript = `
 (function () {
   try {
@@ -37,7 +37,7 @@ export const themeInitScript = `
     var dark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
     document.documentElement.classList.toggle('dark', dark);
     document.documentElement.dataset.theme = theme;
-  } catch (e) { /* localStorage disabled — fall back to the CSS default */ }
+  } catch (e) { /* localStorage disabled, fall back to the CSS default */ }
 })();
 `;
 

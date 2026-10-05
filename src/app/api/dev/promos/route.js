@@ -1,5 +1,5 @@
 // ============================================================================
-// POST /api/dev/promos — create, update, deactivate a promo.
+// POST /api/dev/promos, create, update, deactivate a promo.
 //
 // The discount is ALWAYS computed server-side at checkout (see
 // promo.service.js); nothing stored here is trusted by the checkout path beyond
@@ -14,14 +14,14 @@ import { requireStaff } from "@/lib/auth/guards.js";
 import { AppError } from "@/lib/errors.js";
 import { uuid } from "@/lib/validation.js";
 import { z } from "zod";
-import { createPromo, updatePromo, deactivatePromo } from "@/services/promo.service.js";
+import { createPromo, updatePromo, deactivatePromo, deletePromo } from "@/services/promo.service.js";
 
 const schema = z.discriminatedUnion("action", [
   z
     .object({
       action: z.literal("create"),
       // The full promo payload is validated by promoCreateSchema inside the
-      // service — one definition of a valid promo, not two that can drift.
+      // service, one definition of a valid promo, not two that can drift.
       promo: z.record(z.string(), z.unknown()),
     })
     .strict(),
@@ -33,6 +33,7 @@ const schema = z.discriminatedUnion("action", [
     })
     .strict(),
   z.object({ action: z.literal("deactivate"), promoId: uuid }).strict(),
+  z.object({ action: z.literal("delete"), promoId: uuid }).strict(),
 ]);
 
 export const POST = route(async (req, _ctx, { log }) => {
@@ -62,6 +63,13 @@ export const POST = route(async (req, _ctx, { log }) => {
     case "deactivate": {
       const promo = await deactivatePromo({ actor, promoId: input.promoId, request: requestCtx });
       return ok({ promo }, { req });
+    }
+    case "delete": {
+      // Only a promo that has never been used reaches the database delete. The
+      // service refuses a used one with a 409 and an explanation, because
+      // deactivating is the right answer there, the endpoint never decides.
+      const result = await deletePromo({ actor, promoId: input.promoId, request: requestCtx });
+      return ok(result, { req });
     }
     default:
       throw new AppError("ITP_INVALID_INPUT", "Aksi tidak dikenal.");

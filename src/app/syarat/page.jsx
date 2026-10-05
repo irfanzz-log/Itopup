@@ -1,5 +1,5 @@
 // ============================================================================
-// /syarat — terms of service.
+// /syarat, terms of service.
 //
 // Linked from the checkout form, so it must exist and must not be a stub: a
 // checkout that links to a 404 is worse than one that links nowhere.

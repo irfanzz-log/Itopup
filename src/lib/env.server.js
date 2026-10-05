@@ -2,17 +2,17 @@
 // Server environment access.
 //
 // Two exports with deliberately different behaviour:
-//   * env        — lazily-read, validated on first access. Throws loudly when a
+//   * env        : lazily-read, validated on first access. Throws loudly when a
 //                  required variable is missing, so a misconfigured deploy fails
 //                  at boot instead of at the first customer checkout.
-//   * optional   — for integrations that are allowed to be unconfigured in
+//   * optional   : for integrations that are allowed to be unconfigured in
 //                  Phase 1 (payment gateway, external rate-limit store). These
 //                  return null, and the code that needs them refuses to operate
 //                  rather than faking success.
 //
 // NOTHING in this module may be imported from a client component: it reads
 // server-only secrets. The `server-only` import below makes that a BUILD ERROR
-// rather than a warning — a filename convention alone does not stop a bundler.
+// rather than a warning; a filename convention alone does not stop a bundler.
 // ============================================================================
 import "server-only";
 import { loadEnv } from "./env.js";
@@ -28,7 +28,7 @@ const cache = new Map();
  * Read a variable, cached per-name.
  *
  * THE CACHE IS PROCESS-LIFETIME, NOT REQUEST-LIFETIME. A value read once is
- * never re-read — this is deliberate: it makes configuration immutable for a
+ * never re-read. This is deliberate: it makes configuration immutable for a
  * running process, so a mid-flight env change cannot make two parts of the app
  * disagree about which database they are talking to.
  *
@@ -111,8 +111,12 @@ export function envReport() {
     // Midtrans is the payment gateway; only the configured-ness and mode are
     // reported, never the keys themselves.
     "MIDTRANS_MERCHANT_ID", "MIDTRANS_SERVER_KEY", "MIDTRANS_CLIENT_KEY",
-    "MIDTRANS_IS_PRODUCTION", "MIDTRANS_FINISH_URL", "MIDTRANS_ENABLED_PAYMENTS",
+    "MIDTRANS_IS_PRODUCTION", "MIDTRANS_ENABLED_PAYMENTS",
     "RATE_LIMIT_URL", "RATE_LIMIT_TOKEN",
+    // SMTP for the email OTP. Only configured-ness is reported, never the
+    // password, for the same reason the payment keys are not.
+    "SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_FROM",
+    "GOOGLE_OAUTH_CLIENT_ID", "GOOGLE_OAUTH_REDIRECT_URI",
   ];
   return names.map((name) => ({
     name,
@@ -126,7 +130,7 @@ export const isTest = () => process.env.NODE_ENV === "test";
 // ── Server-side business rules ───────────────────────────────────────────────
 // These live HERE, not in constants.js. constants.js is imported by client
 // components (UserMenu), and Next replaces a non-NEXT_PUBLIC `process.env` read
-// with `undefined` in the browser bundle — so the same constant would silently
+// with `undefined` in the browser bundle, so the same constant would silently
 // hold 60 on the server and NaN on the client. Domain constants stay pure;
 // anything that reads the environment stays in this module.
 

@@ -1,9 +1,12 @@
 import { defineConfig, devices } from "@playwright/test";
 
-// Port 3000 on this machine is occupied by an unrelated daemon (the Hermes
-// WhatsApp bridge). `reuseExistingServer` accepts ANY process already listening
-// on the port, which would silently run the suite against a foreign app — keep
-// the E2E port explicit and overridable.
+// The dev server is launched as a LaunchAgent (com.itopup.dev, see
+// /Users/irfanzzs/.local/share/itopup/dev-agent.sh) so it outlives this shell —
+// a foreground `npm run dev` is reaped by Hermes' terminal backend after ~4
+// minutes. It listens on 3002, the port the local crontab already targets.
+// `reuseExistingServer` accepts ANY process already listening on the port, which
+// would silently run the suite against a foreign app — keep the E2E port
+// explicit and overridable.
 const PORT = process.env.E2E_PORT || "3200";
 const BASE_URL = `http://localhost:${PORT}`;
 

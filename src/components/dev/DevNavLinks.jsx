@@ -1,5 +1,5 @@
 // ============================================================================
-// /dev navigation links — the only client part of the dev chrome.
+// /dev navigation links, the only client part of the dev chrome.
 //
 // It exists purely to highlight the active item. Keeping the highlight here
 // means DevNav (and every page) stays a server component.

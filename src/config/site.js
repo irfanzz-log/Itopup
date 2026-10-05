@@ -16,9 +16,9 @@
  *  offline e-wallet transfer so a customer never has to guess which number to
  *  send to. */
 export const SUPPORT_PHONE = {
-  display: "0857 8851 3910",
-  compact: "085788513910",
-  wa: "6285788513910",
+  display: "0857 7619 1048",
+  compact: "085776191048",
+  wa: "6285776191048",
 };
 
 /** Pre-filled WhatsApp link. The message names the invoice so an operator can
@@ -28,4 +28,4 @@ export function supportWhatsAppUrl(message) {
   return `https://wa.me/${SUPPORT_PHONE.wa}?text=${encodeURIComponent(text)}`;
 }
 
-export const SUPPORT_HOURS = "Setiap hari, 08.00–22.00 WIB";
+export const SUPPORT_HOURS = "Setiap hari, 24 jam";

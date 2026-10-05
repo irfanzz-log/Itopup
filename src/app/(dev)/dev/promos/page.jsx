@@ -1,5 +1,5 @@
 // ============================================================================
-// /dev/promos — promo management.
+// /dev/promos, promo management.
 //
 // Promos are RULES, and the discount is recomputed server-side at checkout from
 // the rule + the cart. So the numbers on this page are illustrative: they show
@@ -14,6 +14,7 @@ import { PageHeader, Section, DataTable, Td, Money } from "@/components/dev/DevU
 import { Badge, EmptyState } from "@/components/ui/primitives";
 import Pagination, { ResultCount } from "@/components/ui/Pagination";
 import PromoForm from "@/components/dev/PromoForm";
+import PromoManager from "@/components/dev/PromoManager";
 import { formatDateTime } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -40,19 +41,38 @@ function promoState(promo) {
   return { label: "Aktif", tone: "success" };
 }
 
+const VISIBILITY_LABEL = {
+  PUBLIC: "Publik",
+  HIDDEN: "Tersembunyi",
+};
+
 export default async function DevPromosPage({ searchParams }) {
   const params = await searchParams;
 
   const page = Math.max(1, parseInt(params?.page ?? "1", 10) || 1);
   const search = typeof params?.q === "string" ? params.q.slice(0, 100) : "";
-  const activeOnly = params?.active === "1";
+  // The two selects. `visibility` and `status` are validated by the service,
+  // an unknown value is ignored rather than becoming a broken WHERE.
+  const visibility = typeof params?.visibility === "string" ? params.visibility : "";
+  const status = typeof params?.status === "string" ? params.status : "";
+  const hasFilter = Boolean(search || visibility || status);
 
-  const { items, pagination } = await listPromosForAdmin({ page, limit: 20, search, activeOnly });
+  const { items, pagination } = await listPromosForAdmin({
+    page,
+    limit: 20,
+    search,
+    visibility: visibility || null,
+    status: status || null,
+  });
 
-  const buildHref = (nextPage) => {
+  // Pagination passes a bare page number; the selects pass { page } through
+  // the same builder so every link carries the current filters.
+  const buildHref = (arg) => {
+    const nextPage = typeof arg === "number" ? arg : (arg?.page ?? 1);
     const query = new URLSearchParams();
     if (search) query.set("q", search);
-    if (activeOnly) query.set("active", "1");
+    if (visibility) query.set("visibility", visibility);
+    if (status) query.set("status", status);
     if (nextPage > 1) query.set("page", String(nextPage));
     const qs = query.toString();
     return `/dev/promos${qs ? `?${qs}` : ""}`;
@@ -68,16 +88,15 @@ export default async function DevPromosPage({ searchParams }) {
       {/* ── Create ────────────────────────────────────────────────────────── */}
       <Section
         title="Buat promo baru"
-        description="Kode promo bersifat opsional — tanpa kode, promo berlaku otomatis pada rentang tanggalnya."
+        description="Kode promo bersifat opsional. Tanpa kode, promo berlaku otomatis pada rentang tanggalnya."
         className="mb-6"
       >
         <PromoForm mode="create" />
       </Section>
 
       {/* ── Filters ───────────────────────────────────────────────────────── */}
-      <form method="get" className="card mb-4 flex flex-wrap items-end gap-3 p-4">
-        {activeOnly ? <input type="hidden" name="active" value="1" /> : null}
-        <div className="min-w-[16rem] flex-1">
+      <form method="get" className="card mb-4 flex flex-col gap-3 p-4 sm:flex-wrap sm:flex-row sm:items-end">
+        <div className="min-w-0 flex-1 sm:min-w-[16rem]">
           <label htmlFor="q" className="label">Cari</label>
           <input
             id="q"
@@ -88,23 +107,33 @@ export default async function DevPromosPage({ searchParams }) {
             className="field"
           />
         </div>
-        <label className="flex items-center gap-2 pb-2.5 text-sm text-foreground-muted">
-          <input type="checkbox" name="active" value="1" defaultChecked={activeOnly} className="h-4 w-4" />
-          Hanya yang sedang berjalan
-        </label>
+        <div className="min-w-0 sm:w-44">
+          <label htmlFor="visibility" className="label">Visibilitas</label>
+          <select id="visibility" name="visibility" defaultValue={visibility} className="field">
+            <option value="">Semua</option>
+            <option value="PUBLIC">Publik</option>
+            <option value="HIDDEN">Tersembunyi</option>
+          </select>
+        </div>
+        <div className="min-w-0 sm:w-44">
+          <label htmlFor="status" className="label">Status</label>
+          <select id="status" name="status" defaultValue={status} className="field">
+            <option value="">Semua</option>
+            <option value="active">Aktif</option>
+            <option value="scheduled">Terjadwal</option>
+            <option value="expired">Berakhir</option>
+            <option value="inactive">Nonaktif</option>
+          </select>
+        </div>
         <button type="submit" className="btn-primary">Terapkan</button>
-        {search || activeOnly ? <Link href="/dev/promos" className="btn-ghost">Reset</Link> : null}
+        {hasFilter ? <Link href="/dev/promos" className="btn-ghost">Reset</Link> : null}
       </form>
 
       {items.length === 0 ? (
         <EmptyState
           icon="tag"
           title="Tidak ada promo"
-          description={
-            search || activeOnly
-              ? "Tidak ada promo yang cocok dengan filter ini."
-              : "Buat promo pertama dengan formulir di atas."
-          }
+          description={hasFilter ? "Tidak ada promo yang cocok dengan filter ini." : "Buat promo pertama dengan formulir di atas."}
         />
       ) : (
         <Section
@@ -123,6 +152,7 @@ export default async function DevPromosPage({ searchParams }) {
                 { key: "min", label: "Min. belanja", align: "right" },
                 { key: "periode", label: "Periode" },
                 { key: "pemakaian", label: "Pemakaian", align: "right" },
+                { key: "visibilitas", label: "Visibilitas" },
                 { key: "status", label: "Status" },
               ]}
               rows={items}
@@ -198,6 +228,16 @@ export default async function DevPromosPage({ searchParams }) {
                         </span>
                       ) : null}
                     </Td>
+                    <Td>
+                      <Badge tone={promo.visibility === "HIDDEN" ? "neutral" : "info"}>
+                        {VISIBILITY_LABEL[promo.visibility] ?? promo.visibility}
+                      </Badge>
+                      {promo.visibility === "HIDDEN" ? (
+                        <span className="mt-0.5 block text-[11px] text-foreground-subtle">
+                          pakai kode manual
+                        </span>
+                      ) : null}
+                    </Td>
                   </>
                 );
               }}
@@ -219,8 +259,18 @@ export default async function DevPromosPage({ searchParams }) {
                       {promo.minSpend > 0 ? ` · min ${new Intl.NumberFormat("id-ID").format(promo.minSpend)}` : ""}
                     </p>
                     <p className="mt-1 text-[11px] text-foreground-subtle">
-                      {formatDateTime(promo.startsAt)} — {formatDateTime(promo.endsAt)}
+                      {formatDateTime(promo.startsAt)} s/d {formatDateTime(promo.endsAt)}
                     </p>
+                    <div className="mt-2 flex items-center gap-2">
+                      <Badge tone={promo.visibility === "HIDDEN" ? "neutral" : "info"}>
+                        {VISIBILITY_LABEL[promo.visibility] ?? promo.visibility}
+                      </Badge>
+                      {(promo._count?.claims ?? 0) > 0 ? (
+                        <span className="text-[11px] text-foreground-subtle">
+                          {promo._count.claims} klaim
+                        </span>
+                      ) : null}
+                    </div>
                   </div>
                 );
               }}
@@ -235,20 +285,10 @@ export default async function DevPromosPage({ searchParams }) {
       {items.length > 0 ? (
         <Section
           title="Kelola promo"
-          description="Mengubah atau menonaktifkan promo yang sudah ada."
+          description="Pilih satu promo, lalu ubah, nonaktifkan, atau hapus. Default: promo terbaru. Promo yang sudah dipakai tidak bisa dihapus, nonaktifkan saja."
           className="mt-6"
         >
-          <ul className="space-y-4">
-            {items.map((promo) => (
-              <li key={promo.id} className="rounded-lg border border-border p-3">
-                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                  <span className="text-sm font-semibold text-foreground">{promo.title}</span>
-                  <PromoForm mode="deactivate" promo={promo} />
-                </div>
-                <PromoForm mode="update" promo={promo} />
-              </li>
-            ))}
-          </ul>
+          <PromoManager promos={items} />
         </Section>
       ) : null}
     </>
