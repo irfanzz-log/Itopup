@@ -111,10 +111,9 @@ export default async function HomePage() {
                 Cara Top Up
               </Link>
             </div>
-            <dl className="mt-9 grid max-w-lg grid-cols-3 gap-4">
+            <dl className="mt-9 grid max-w-lg grid-cols-2 gap-4">
               <Stat label="Layanan" value={grouped.reduce((sum, c) => sum + (c.entries ?? c.games ?? []).length, 0)} />
               <Stat label="Kategori" value={categories.length} />
-              <Stat label="Biaya layanan" value="Rp 0" plain />
             </dl>
           </div>
         </div>
@@ -261,11 +260,11 @@ export default async function HomePage() {
   );
 }
 
-function Stat({ label, value, plain = false }) {
+function Stat({ label, value }) {
   return (
     <div>
       <dt className="text-xs font-medium uppercase tracking-wide text-foreground-subtle">{label}</dt>
-      <dd className="mt-0.5 text-lg font-bold text-foreground">{plain ? value : `${value}+`}</dd>
+      <dd className="mt-0.5 text-lg font-bold text-foreground">{`${value}+`}</dd>
     </div>
   );
 }
