@@ -352,6 +352,35 @@ export async function getGameDetail(slug, { includeInactive = false } = {}) {
   });
 
   if (!game || (!includeInactive && !game.isActive)) return null;
+
+  // Variants with no provider that can currently fulfil them are removed from
+  // the storefront. `isActive` is an admin flag for "this product is in the
+  // catalogue"; availability is a property of the provider link, and the two
+  // have drifted apart: 51 active variants had every provider SKU marked
+  // out_of_stock (PUBG was showing 48 nominal while only one was buyable), and
+  // the checkout form learned the truth only after the customer paid.
+  //
+  // The stock column is not the signal: the Melostore pricelist never exposes
+  // stock, so `providerStock` is always null and the form's `stock > 0` filter
+  // is a no-op. `providerProducts.isAvailable` is the authoritative flag, kept
+  // fresh by the sync job.
+  //
+  // The available ids are fetched in a second query rather than through a
+  // nested relation select: adding `providerProducts` inside the products
+  // projection silently emptied `variants` (Prisma 7 returned no rows for the
+  // nested relation at all), so the filter is applied here on a plain id set.
+  if (!includeInactive) {
+    const availableIds = await prisma.providerProduct.findMany({
+      where: { isAvailable: true, productVariant: { isActive: true } },
+      select: { productVariantId: true },
+      distinct: ["productVariantId"],
+    });
+    const buyable = new Set(availableIds.map((p) => p.productVariantId));
+    for (const product of game.products) {
+      product.variants = (product.variants ?? []).filter((v) => buyable.has(v.id));
+    }
+  }
+
   return game;
 }
 

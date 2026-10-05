@@ -39,7 +39,7 @@ export const PRIMARY_TARGET_FIELD = {
   "pubg-mobile": "playerId",
   "free-fire": "playerId",
   codm: "playerId",
-  roblox: "email",
+  roblox: "gameLogin",
   "genshin-impact": "userId",
   // Pulsa and e-wallet are identified by phone number.
   //
@@ -122,6 +122,9 @@ export const EXTRA_TARGET_FIELDS = ["zone2", "serverId", "region"];
  */
 export const ZONE_TARGET_FIELD = {
   efootball: "gamePassword",
+  // Roblox (Via Login): the inquiry form's second field is "Password", so the
+  // secret the checkout collected as `gamePassword` lands in the zone slot.
+  roblox: "gamePassword",
 };
 
 /**

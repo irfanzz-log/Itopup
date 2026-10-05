@@ -68,14 +68,15 @@ export const GAME_SEED = [
     name: "Roblox",
     publisher: "Roblox Corporation",
     description:
-      "Beli Robux Roblox dengan berbagai pilihan nominal dan proses otomatis.",
+      "Beli Robux Roblox dengan berbagai pilihan nominal dan proses otomatis. Masukkan login akun Roblox Anda (email/username + password). Data diamankan dengan enkripsi.",
     popular: true,
     supportsValidation: false,
+    // Roblox (Via Login) is the brand the pricelist sells Robux under, and its
+    // inquiry form is a Login + Password pair — the same shape as eFootball, not
+    // an email destination. A username/email alone cannot top it up.
+    needsGameLogin: true,
     sortOrder: 5,
-    // Roblox identifies an account by username; the provider may additionally
-    // require the region. Confirmed against the provider's product list before
-    // enabling validation.
-    inputFields: [field("email")],
+    inputFields: [field("gameLogin"), field("gamePassword")],
   },
   {
     slug: "genshin-impact",

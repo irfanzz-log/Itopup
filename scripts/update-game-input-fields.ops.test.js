@@ -62,9 +62,11 @@ const CHANGED = [
   ["garena-shells", "email"],
   ["google-play", "email"],
   ["razer-gold", "email"],
-  ["roblox", "email"],
   ["tiktok-gift-card", "email"],
   ["unipin-gift-card", "email"],
+  // "Roblox (Via Login)" is the brand the pricelist sells Robux under; its form
+  // is Login + Password, the same shape as eFootball.
+  ["roblox", "gameLogin"],
   ["league-of-legends", "riotId"],
   ["legends-of-runeterra", "riotId"],
   ["tft-mobile", "riotId"],
@@ -114,9 +116,16 @@ describe("games.inputFields backfill", () => {
     expect(after).toHaveLength(CHANGED.length);
     for (const [slug, expectedKey] of CHANGED) {
       const row = after.find((g) => g.slug === slug);
-      expect(row?.inputFields.map((f) => f.key), `game ${slug}`).toEqual([expectedKey]);
+      expect(row?.inputFields.map((f) => f.key), `game ${slug}`).toEqual([
+        expectedKey === "gameLogin" ? "gameLogin" : expectedKey,
+        ...(expectedKey === "gameLogin" ? ["gamePassword"] : []),
+      ]);
       expect(row?.inputFields[0].label, `game ${slug}`).toBe(
-        expectedKey === "email" ? "Email" : "Riot ID",
+        expectedKey === "email"
+          ? "Email"
+          : expectedKey === "gameLogin"
+            ? "Login Akun Game"
+            : "Riot ID",
       );
       expect(row?.inputFields[0].pattern, `game ${slug}`).toBeTruthy();
     }

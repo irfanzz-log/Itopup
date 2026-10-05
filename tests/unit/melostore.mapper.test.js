@@ -518,7 +518,6 @@ describe("catalogue ↔ mapper contract", () => {
     const { GAME_SEED } = await import("../../src/config/games.js");
 
     const EMAIL_SLUGS = [
-      "roblox",
       "battlenet-gift-card",
       "garena-shells",
       "google-play",
@@ -551,5 +550,19 @@ describe("catalogue ↔ mapper contract", () => {
       expect(game, `game ${slug} must exist`).toBeDefined();
       expect(game.inputFields.map((f) => f.key), `game ${slug}`).toContain("riotId");
     }
+  });
+
+  it("collects a login for Roblox, whose provider form is Login + Password", async () => {
+    // The pricelist sells Robux under "Roblox (Via Login)"; its inquiry form is a
+    // Login + Password pair (form key 7d78761d…), the same shape as eFootball.
+    // A username or email alone cannot top it up, and needsGameLogin is what
+    // routes the checkout through the stored-credential path that keeps the
+    // password out of the order row.
+    const { GAME_SEED } = await import("../../src/config/games.js");
+
+    const game = GAME_SEED.find((g) => g.slug === "roblox");
+    expect(game).toBeDefined();
+    expect(game.inputFields.map((f) => f.key)).toEqual(["gameLogin", "gamePassword"]);
+    expect(game.needsGameLogin).toBe(true);
   });
 });
