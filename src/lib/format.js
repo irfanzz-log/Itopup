@@ -128,6 +128,42 @@ export function formatRelative(value, now = Date.now()) {
   return future ? `dalam ${n} ${label}` : `${n} ${label} lalu`;
 }
 
+/**
+ * Label a variant card: what the customer is actually buying.
+ *
+ * `name` is the authoritative label when the catalogue sets one, but a variant
+ * may legitimately have an empty name (VARIANT_SEED defines denomination+unit
+ * only, and some seed paths write ""). Rendering an empty label shows a tile
+ * with nothing but a price, which reads as "I don't know what I'm paying for".
+ * So the label is derived from the denomination and unit instead.
+ *
+ * An `IDR` unit is a stored-value card (Razer Gold, Google Play, Garena Shells):
+ * the denomination IS a rupiah amount, so it renders as money rather than
+ * "20.000 IDR". An empty unit means the currency is already named by the product
+ * (League of Legends splits every tier into its own "575 RP" product), so the
+ * product name supplies the unit.
+ *
+ * Deterministic for the same hydration reason as groupThousands: built from
+ * plain strings, no ICU currency pattern.
+ */
+export function variantLabel(variant, { productName = null } = {}) {
+  const name = typeof variant?.name === "string" ? variant.name.trim() : "";
+  if (name) return name;
+
+  const denom = variant?.denomination;
+  const unit = typeof variant?.unit === "string" ? variant.unit.trim() : "";
+  const product = productName?.trim() ?? "";
+  // No denomination: a named product sold as a single item (a weekly pass).
+  if (denom == null || denom === "") return product || "Produk";
+  if (unit === "IDR") return formatIDR(denom);
+  if (unit) return `${formatNumber(denom)} ${unit}`;
+  // An empty unit means the currency is named by the PRODUCT, not the variant —
+  // League of Legends makes every tier its own "575 RP" product. The product
+  // name already carries the denomination, so appending the number would read
+  // "575 575 RP".
+  return product || formatNumber(denom) || "Produk";
+}
+
 /** Mask an email for display next to a session: bu***@mail.com */
 export function maskEmail(value) {
   if (typeof value !== "string" || !value.includes("@")) return "-";

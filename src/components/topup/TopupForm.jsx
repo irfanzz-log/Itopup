@@ -19,7 +19,7 @@ import { apiPost, apiGet } from "@/lib/api-client";
 import { deriveIdempotencyKey } from "@/lib/checkout-key";
 import { isSecretField, normalisePhoneId, phoneErrorMessage } from "@/config/input-fields";
 import { phoneMatchesOperator, OPERATOR_DISPLAY_NAME } from "@/config/operators";
-import { formatIDR, formatNumber } from "@/lib/format";
+import { formatIDR, formatNumber, variantLabel } from "@/lib/format";
 import { filterMethodsForPurchase } from "@/config/payment";
 import { paymentIcon, walletIcon } from "@/config/payment-icons.js";
 import MyVouchers from "@/components/topup/MyVouchers.jsx";
@@ -477,7 +477,7 @@ export default function TopupForm({ game, products, paymentMethods, initialPrice
                             </span>
                           ) : null}
                           <span className="pr-6 text-sm font-semibold leading-snug text-foreground">
-                            {v.name}
+                            {variantLabel(v, { productName: product?.name })}
                           </span>
                           {/* Harga per nominal: coret harga normal, tampilkan harga promo */}
                           <VariantTilePrice
@@ -699,7 +699,7 @@ export default function TopupForm({ game, products, paymentMethods, initialPrice
           <dl className="mt-4 space-y-2.5 text-sm">
             <Row label="Layanan" value={game.name} />
             <Row label="Produk" value={product?.name ?? "—"} />
-            <Row label="Nominal" value={variant?.name ?? "Belum dipilih"} />
+            <Row label="Nominal" value={variant ? variantLabel(variant, { productName: product?.name }) : "Belum dipilih"} />
             {game.inputFields.map((def) =>
               // A secret is never echoed, not even masked: a length is a
               // confirmation of a guess, and the summary rail is not where the

@@ -29,6 +29,7 @@ import {
   AUDIT, ORDER_STATUS, ORDER_TRANSITIONS, PAYMENT_STATUS, PAYMENT_STATUS_LABEL, TERMINAL_ORDER_STATUSES,
 } from "../lib/constants.js";
 import { ORDER_TTL_MINUTES } from "../lib/env.server.js";
+import { variantLabel } from "../lib/format.js";
 import { validateFields, secretFieldKeys } from "../config/input-fields.js";
 import { phoneMatchesOperator, operatorOfPhone, OPERATOR_DISPLAY_NAME } from "../config/operators.js";
 import { computePaymentFee, getPaymentMethod, checkMethodEligibility } from "../config/payment.js";
@@ -1042,7 +1043,7 @@ export async function createOrder({ userId, input, request = {}, user = null }) 
           status: ORDER_STATUS.PENDING_PAYMENT,
           gameName: variant.product.game.name,
           productName: variant.product.name,
-          variantName: variant.name,
+          variantName: variantLabel(variant, { productName: variant.product.name }),
           quantity: pricing.quantity,
           customerInput: fieldResult.values,
           // Only the reference, never the secret. The ciphertext stays in
@@ -1066,7 +1067,7 @@ export async function createOrder({ userId, input, request = {}, user = null }) 
               productVariantId: variant.id,
               gameName: variant.product.game.name,
               productName: variant.product.name,
-              variantName: variant.name,
+              variantName: variantLabel(variant, { productName: variant.product.name }),
               quantity: pricing.quantity,
               unitCostPrice: pricing.unitCostPrice,
               unitSellingPrice: pricing.unitSellingPrice,

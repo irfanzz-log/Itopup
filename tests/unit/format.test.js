@@ -9,6 +9,7 @@ import {
   maskEmail,
   maskTail,
   initials,
+  variantLabel,
 } from "../../src/lib/format.js";
 
 // Regression: these helpers rendered differently on the server and in the
@@ -132,5 +133,52 @@ describe("misc helpers", () => {
     expect(initials("  Irfan  ")).toBe("I");
     expect(initials("")).toBe("?");
     expect(initials(null)).toBe("?");
+  });
+});
+
+// variantLabel exists because 179 of 680 variants in the live catalogue carry an
+// empty name while their denomination and unit identify the item. The nominal
+// grid then rendered a price with no label, so a customer could not tell a
+// 330-Token card from a 1.110-Token card. These cases pin every branch of the
+// derivation, including the store-value-card and per-tier-product shapes.
+describe("variantLabel — what the nominal card is selling", () => {
+  it("returns an explicit name verbatim", () => {
+    // The operator's own label is authoritative, bonus clause and all.
+    expect(variantLabel({ name: "300+30 Tokens" })).toBe("300+30 Tokens");
+    expect(variantLabel({ name: "  5 Diamonds  " })).toBe("5 Diamonds");
+  });
+
+  it("derives the label from denomination + unit", () => {
+    expect(variantLabel({ name: "", denomination: 330, unit: "Tokens" })).toBe("330 Tokens");
+    expect(variantLabel({ name: null, denomination: 8080, unit: "Oneiric Shards" })).toBe("8.080 Oneiric Shards");
+    expect(variantLabel({ denomination: 1, unit: "Diamonds" })).toBe("1 Diamonds");
+  });
+
+  it("renders an IDR unit as money, not as '20.000 IDR'", () => {
+    // Razer Gold / Google Play cards are stored-value: the denomination IS a
+    // rupiah amount, so "Rp 20.000" reads correctly and "20.000 IDR" does not.
+    expect(variantLabel({ denomination: 20000, unit: "IDR" })).toBe("Rp 20.000");
+    expect(variantLabel({ denomination: 1000000, unit: "IDR" })).toBe("Rp 1.000.000");
+  });
+
+  it("falls back to the product name when the unit is empty", () => {
+    // League of Legends makes every tier its own product, so "575" + product
+    // "575 RP" must render "575 RP" rather than a bare number.
+    expect(variantLabel({ denomination: 575, unit: "" }, { productName: "575 RP" })).toBe("575 RP");
+    expect(variantLabel({ denomination: 575, unit: null }, { productName: "575 RP" })).toBe("575 RP");
+  });
+
+  it("names a non-denominated item after its product", () => {
+    // A weekly pass has no number to show.
+    expect(variantLabel({ name: "", denomination: null, unit: null }, { productName: "Weekly Pass" })).toBe("Weekly Pass");
+    expect(variantLabel({ name: "", denomination: null, unit: null }, { productName: "  Twilight Pass  " })).toBe("Twilight Pass");
+  });
+
+  it("never returns an empty string", () => {
+    // An empty label renders a card with a price and no item, which is the bug.
+    expect(variantLabel({ name: "", denomination: null, unit: null })).toBe("Produk");
+    expect(variantLabel({ name: "", denomination: null, unit: null }, { productName: "  " })).toBe("Produk");
+    expect(variantLabel(null)).toBe("Produk");
+    expect(variantLabel({ name: "", denomination: "", unit: "" }, { productName: "" })).toBe("Produk");
   });
 });
