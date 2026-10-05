@@ -28,12 +28,13 @@ import { fileURLToPath } from "node:url";
 //      money ("Rp 20.000") and an empty unit falling back to the product name
 //      ("575 RP" for League of Legends, whose products are one tier each).
 //
-// Idempotent: it only touches rows with an empty name, and `variantLabel()`
-// returns the existing name verbatim when one is present, so a re-run over a
-// clean catalogue is a no-op.
+// Writes to the database named in .env.prod (set FILL_TARGET=dev for the dev
+// database). Idempotent: it only touches rows with an empty name, and
+// `variantLabel()` returns the existing name verbatim when one is present, so a
+// re-run over a clean catalogue is a no-op.
 //
-// Writes to the database named in .env.prod. Pass --dry-run to print instead.
 //   npx vitest run --config vitest.sync.config.js scripts/fill-variant-names.ops.test.js
+//   FILL_TARGET=dev npx vitest run --config vitest.sync.config.js scripts/fill-variant-names.ops.test.js
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, "..");
@@ -73,7 +74,10 @@ describe("variant name backfill", () => {
     // The pooler in DATABASE_URL refuses Prisma's transaction-mode DDL and can
     // time out; DIRECT_URL is the same database over the direct connection, and
     // this script only touches rows it selects itself.
-    forceEnv(".env.prod");
+    //
+    // Defaults to .env.prod (where the live backfill ran). Set
+    // FILL_TARGET=dev to re-run against the dev database instead.
+    forceEnv({ dev: ".env.dev", prod: ".env.prod" }[process.env.FILL_TARGET] ?? ".env.prod");
     if (process.env.DIRECT_URL) process.env.DATABASE_URL = process.env.DIRECT_URL;
 
     const { variantLabel } = await import("../src/lib/format.js");
