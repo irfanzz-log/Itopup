@@ -2,9 +2,23 @@
 // /public/icons/games so icons are local — the same policy as the existing ones
 // (see the header comment in src/config/icons.js: never hotlink a brand CDN).
 import { describe, it } from "vitest";
-import { writeFileSync } from "node:fs";
-import { prisma } from "../src/lib/db.js";
-import { call } from "../src/providers/melostore/client.js";
+import { writeFileSync, readdirSync, readFileSync } from "node:fs";
+import path from "node:path";
+
+const ICONS_DIR = path.resolve(process.cwd(), "public/icons/games");
+
+// vitest's own loadEnv prefers .env.test (VITEST=true), which points at the
+// throwaway local DB. This must run BEFORE src/lib/db.js is imported — db.js
+// resolves DATABASE_URL at import time, so setting it afterwards is too late.
+const ENV_FILE = (process.env.TARGET || "dev").toLowerCase() === "prod" ? ".env.prod" : ".env.dev";
+for (const line of readFileSync(path.resolve(process.cwd(), ENV_FILE), "utf8").split("\n")) {
+  const m = /^\s*([A-Z0-9_]+)\s*=\s*(.*)$/.exec(line);
+  if (m) process.env[m[1]] = m[2].trim().replace(/^["']|["']$/g, "");
+}
+
+// Imported after the env is pinned to the target database.
+const { prisma } = await import("../src/lib/db.js");
+const { call } = await import("../src/providers/melostore/client.js");
 
 // Map our game slug -> the brand name Melostore uses, so we can match the
 // thumbnail. Falls back to a prefix match on the brand name.
@@ -34,6 +48,31 @@ const BRAND_FOR_SLUG = {
   "whiteout-survival": "Whiteout Survival",
   "yalla-ludo": "Yalla Ludo",
   "zepeto": "Zepeto",
+  // ── Indonesia-region ladders added in the catalogue import ────────────────
+  "8-ball-pool": "8 Ball Pool (ID)",
+  "apex-legends-mobile": "Apex Legends Mobile (ID)",
+  "arena-of-valor": "Arena of Valor (ID)",
+  "battlenet-gift-card": "Battle.net Gift Cards (ID)",
+  "dead-target": "Dead Target (Indonesia)",
+  "dunk-city-dynasty": "Dunk City Dynasty (ID)",
+  "eafc-mobile": "EAFC Mobile (ID)",
+  "garena-shells": "Garena Shells Gift Card (ID)",
+  "garena-undawn": "Garena Undawn (Indonesia)",
+  "google-play": "Google Play (ID)",
+  "honkai-star-rail": "Honkai: Star Rail (ID)",
+  "league-of-legends": "League of Legends (ID)",
+  "legends-of-runeterra": "Legends of Runeterra (Indonesia)",
+  "point-blank": "Point Blank (ID)",
+  "pokemon-unite": "Pokémon UNITE (ID)",
+  "rainbow-six-mobile": "Rainbow Six Mobile (ID)",
+  "razer-gold": "Razer Gold Indonesia",
+  "tft-mobile": "TFT Mobile (ID)",
+  "the-moonlit-oath": "The Moonlit Oath (ID)",
+  "tiktok-gift-card": "TikTok Gift Card (ID)",
+  "unipin-gift-card": "Unipin Gift Card (ID)",
+  "valorant": "Valorant (Indonesia)",
+  "wild-rift": "League of Legends: Wild Rift (ID)",
+  "zenless-zone-zero": "Zenless Zone Zero (ID)",
 };
 
 describe("thumbnails", () => {
@@ -61,10 +100,22 @@ describe("thumbnails", () => {
     }
 
     const out = { total: thumb.size, downloaded: [], skipped: [] };
+    const extByMime = { "image/webp": "webp", "image/png": "png", "image/jpeg": "jpg", "image/svg+xml": "svg" };
     for (const g of needed) {
       const url = thumb.get(BRAND_FOR_SLUG[g.slug]);
       if (!url) { out.skipped.push({ slug: g.slug, reason: "thumbnail tidak ditemukan untuk brand" }); continue; }
-      out.downloaded.push({ slug: g.slug, brand: BRAND_FOR_SLUG[g.slug], url });
+      // Only fetch if the artwork is not already on disk: scanGameIcons is
+      // first-seen-wins, so an existing file must never be overwritten.
+      const existing = readdirSync(ICONS_DIR).find((f) => f.startsWith(g.slug + "."));
+      if (existing) { out.skipped.push({ slug: g.slug, reason: `sudah ada: games/${existing}` }); continue; }
+      const res = await fetch(url);
+      if (!res.ok) { out.skipped.push({ slug: g.slug, reason: `HTTP ${res.status}` }); continue; }
+      const ext = extByMime[String(res.headers.get("content-type") || "").split(";")[0].trim()] || "png";
+      const file = path.join(ICONS_DIR, `${g.slug}.${ext}`);
+      const buf = Buffer.from(await res.arrayBuffer());
+      if (buf.length < 200) { out.skipped.push({ slug: g.slug, reason: `gambar terlalu kecil (${buf.length}B)` }); continue; }
+      writeFileSync(file, buf);
+      out.downloaded.push({ slug: g.slug, brand: BRAND_FOR_SLUG[g.slug], file: `games/${g.slug}.${ext}`, bytes: buf.length });
     }
     writeFileSync("/tmp/thumbs.json", JSON.stringify(out, null, 2));
   });

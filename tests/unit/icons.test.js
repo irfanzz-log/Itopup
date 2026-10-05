@@ -19,24 +19,28 @@ import {
   GAME_ICONS,
   TELCO_ICONS,
 } from "@/config/icons.js";
+import { GAME_SEED } from "@/config/games.js";
 
 /**
- * Every game the catalogue actually sells. The icon map is built from the
- * /public/icons/games directory at import time (see src/config/icons.js), so
- * this asserts the property that matters, no sellable game falls back to
- * initials, instead of duplicating a hand-written list that drifts.
+ * Every game the catalogue actually sells. Derived from GAME_SEED rather than
+ * repeated by hand: the icon map is built from /public/icons/games at import
+ * time (see src/config/icons.js), so a second list here can only drift — every
+ * catalogue import would fail this assertion for reasons nobody broke.
+ *
+ * `pulsa` is excluded on purpose: it has no single brand mark, its products
+ * carry the operator logos via TELCO_ICONS.
  */
-const EXPECTED_GAMES = [
-  "mobile-legends",
-  "pubg-mobile",
-  "free-fire",
-  "codm",
-  "roblox",
-  "genshin-impact",
-  // Added for the eFootball rollout: its provider flow needs the customer's own
-  // game login, and its coins are sold as separate iOS/Android products.
-  "efootball",
-  // Games added from the Melostore pricelist.
+const EXPECTED_GAMES = GAME_SEED.map((g) => g.slug).filter((s) => s !== "pulsa");
+
+/**
+ * Games on the GLOBAL ladders. Artwork exists and they are sold in production,
+ * but they are deliberately NOT in GAME_SEED — the catalogue config carries the
+ * Indonesia ladders only, and the global games were seeded straight into the
+ * database. Naming them here keeps the orphan check meaningful (a stray file is
+ * still an orphan) without failing on games that are intentionally not in the
+ * config.
+ */
+const GLOBAL_ONLY_GAMES = [
   "zepeto",
   "farlight-84",
   "age-of-empires-mobile",
@@ -81,8 +85,11 @@ describe("gameIcon", () => {
   it("covers exactly the catalogue — no orphan files, no missing games", () => {
     // The map is derived from the directory, so a game with artwork and no
     // catalogue entry (e.g. a deleted game whose file was left behind) shows
-    // up here as an orphan. Both directions matter.
-    expect(Object.keys(GAME_ICONS).sort()).toEqual([...EXPECTED_GAMES].sort());
+    // up here as an orphan. Both directions matter. GLOBAL_ONLY_GAMES are the
+    // ones sold in production without a GAME_SEED entry (see above).
+    expect(Object.keys(GAME_ICONS).sort()).toEqual(
+      [...EXPECTED_GAMES, ...GLOBAL_ONLY_GAMES].sort(),
+    );
   });
 });
 
