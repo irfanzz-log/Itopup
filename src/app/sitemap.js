@@ -14,7 +14,7 @@
 // article collection approaches that, split this into app/sitemap/[id].js and
 // add a sitemap index, keeping the same service layer.
 // ============================================================================
-import { absoluteUrl } from "@/lib/site-url.js";
+import { absoluteUrl, isProductionOrigin, SITE_URL } from "@/lib/site-url.js";
 import {
   FIXED_SITEMAP_ENTRIES,
   sitemapCategories,
@@ -25,6 +25,26 @@ import {
 export const dynamic = "force-dynamic";
 
 export default async function sitemap() {
+  // ── A sitemap full of localhost is worse than no sitemap. ────────────────
+  //
+  // This is not theoretical: a production build that did not see
+  // NEXT_PUBLIC_APP_URL advertised http://localhost:3200/... to Google, which
+  // is a crawl error on every URL and can suppress indexing for the whole
+  // site. A deployment misconfiguration must be loud, so an empty sitemap is
+  // served instead of a wrong one, and the reason is logged once per request.
+  if (process.env.NODE_ENV === "production" && !isProductionOrigin) {
+    console.error(
+      JSON.stringify({
+        ts: new Date().toISOString(),
+        level: "error",
+        event: "sitemap.non_public_origin",
+        message: "Refusing to publish a sitemap with a non-https origin",
+        origin: SITE_URL,
+      })
+    );
+    return [];
+  }
+
   // The catalogue read is wrapped: a database failure must not turn the
   // sitemap into a 500. The fixed routes are still correct and worth serving,
   // and an empty catalogue section degrades to a small sitemap rather than
