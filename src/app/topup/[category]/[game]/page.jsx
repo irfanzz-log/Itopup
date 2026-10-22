@@ -10,7 +10,6 @@
 // ============================================================================
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Suspense } from "react";
 import TopupForm from "@/components/topup/TopupForm";
 import { GameArtwork } from "@/components/catalog/CatalogCards";
 import { productIcon } from "@/config/icons.js";
@@ -205,56 +204,66 @@ export default async function GameTopupPage({ params }) {
           action={<Link href={`/topup/${canonicalCategory}`} className="btn-secondary">Layanan lain</Link>}
         />
       ) : (
-        // useSearchParams requires a Suspense boundary or the whole route
-        // deopts to client-side rendering.
-        <Suspense fallback={null}>
-          <TopupForm
-            game={{
-              id: game.id,
-              name: game.name,
-              slug: game.slug,
-              inputFields: Array.isArray(game.inputFields) ? game.inputFields : [],
-              supportsValidation: Boolean(game.supportsValidation),
-              categoryKind: game.category?.kind ?? null,
-            }}
-            products={products.map((product) => ({
-              id: product.id,
-              name: product.name,
-              slug: product.slug,
-              description: product.description ?? null,
-              sortMode: product.sortMode,
-              // A product's brand mark: for pulsa the product IS the operator, so
-              // its logo comes from the product slug; for games it is the game's.
-              icon: productIcon({ gameSlug: game.slug, productSlug: product.slug }),
-              variants: (product.variants ?? []).map((variant) => ({
-                id: variant.id,
-                name: variant.name,
-                slug: variant.slug,
-                denomination: variant.denomination ?? null,
-                unit: variant.unit ?? null,
-                // sellingPrice is the public price. costPrice is deliberately NOT
-                // sent: it is the provider's price and is never a client concern.
-                sellingPrice: variant.sellingPrice,
-                isActive: variant.isActive,
-                stock: variant.stock ?? null,
-              })),
-            }))}
-            paymentMethods={paymentMethods.map((method) => ({
-              key: method.key,
-              label: method.label,
-              group: method.group,
-              description: method.description ?? null,
-              feeFlat: method.feeFlat ?? 0,
-              feePercent: method.feePercent ?? 0,
-              minAmount: method.minAmount ?? 0,
-              maxAmount: method.maxAmount ?? null,
-            }))}
-            // Promo prices for every nominal, resolved server-side before this
-            // page rendered, so the grid's first paint already shows the
-            // crossed-out price instead of swapping it in afterwards.
-            initialPrices={initialPrices}
-          />
-        </Suspense>
+        // NO <Suspense> HERE — deliberately.
+        //
+        // This boundary was added for `useSearchParams()`, but TopupForm does not
+        // use it (only the auth forms do). Keeping it was actively harmful: with
+        // a `fallback={null}` boundary the route streams the shell first and the
+        // entire purchase surface — every nominal, and the page's only <h1> —
+        // arrives later as a separate streamed chunk. A crawler that does not
+        // execute (or does not wait for) that stream sees a page with no heading
+        // and no products: measured on production, the HTML contained 0 of the
+        // 51 nominals and no <h1>, while a JS-enabled browser showed all of them.
+        // That is 48 game pages in the sitemap that Google reads as thin/empty.
+        //
+        // Rendering TopupForm inline puts the catalogue in the initial HTML, so
+        // the page has real, indexable content and still hydrates as before.
+        <TopupForm
+          game={{
+            id: game.id,
+            name: game.name,
+            slug: game.slug,
+            inputFields: Array.isArray(game.inputFields) ? game.inputFields : [],
+            supportsValidation: Boolean(game.supportsValidation),
+            categoryKind: game.category?.kind ?? null,
+          }}
+          products={products.map((product) => ({
+            id: product.id,
+            name: product.name,
+            slug: product.slug,
+            description: product.description ?? null,
+            sortMode: product.sortMode,
+            // A product's brand mark: for pulsa the product IS the operator, so
+            // its logo comes from the product slug; for games it is the game's.
+            icon: productIcon({ gameSlug: game.slug, productSlug: product.slug }),
+            variants: (product.variants ?? []).map((variant) => ({
+              id: variant.id,
+              name: variant.name,
+              slug: variant.slug,
+              denomination: variant.denomination ?? null,
+              unit: variant.unit ?? null,
+              // sellingPrice is the public price. costPrice is deliberately NOT
+              // sent: it is the provider's price and is never a client concern.
+              sellingPrice: variant.sellingPrice,
+              isActive: variant.isActive,
+              stock: variant.stock ?? null,
+            })),
+          }))}
+          paymentMethods={paymentMethods.map((method) => ({
+            key: method.key,
+            label: method.label,
+            group: method.group,
+            description: method.description ?? null,
+            feeFlat: method.feeFlat ?? 0,
+            feePercent: method.feePercent ?? 0,
+            minAmount: method.minAmount ?? 0,
+            maxAmount: method.maxAmount ?? null,
+          }))}
+          // Promo prices for every nominal, resolved server-side before this
+          // page rendered, so the grid's first paint already shows the
+          // crossed-out price instead of swapping it in afterwards.
+          initialPrices={initialPrices}
+        />
       )}
     </div>
   );
