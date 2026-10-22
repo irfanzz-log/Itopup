@@ -16,6 +16,7 @@ export const metadata = {
   title: "Promo & Voucher",
   description:
     "Kumpulan promo aktif ITOPUP: diskon top up game dan voucher pulsa. Klaim kode promonya sebelum berakhir.",
+  keywords: ["promo top up", "voucher game", "diskon diamond", "kode promo", "promo pulsa"],
   alternates: { canonical: "/promo" },
   openGraph: {
     title: "Promo & Voucher | ITOPUP",

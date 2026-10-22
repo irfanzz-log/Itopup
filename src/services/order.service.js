@@ -1130,12 +1130,25 @@ export async function createOrder({ userId, input, request = {}, user = null }) 
       });
     } catch (err) {
       log.error("order.instructions_failed", { orderId: order.id, error: err });
+      // The CAUSE is persisted, not just the internal code.
+      //
+      // `ITP_PAYMENT_FAILED` on its own is a category, not a diagnosis: it is
+      // raised for a gateway rejection, a partner outage, and a bad payload
+      // alike. Storing only the code made an operator unable to tell "the
+      // merchant has not activated the channel" (a dashboard setting) from
+      // "the bank is down" (wait) from "our payload is wrong" (a code bug) —
+      // every one of them read as the same opaque row.
+      //
+      // The message is the AppError's own text, which the adapter already
+      // sanitised: no key, no raw gateway English, and no partner name reaches
+      // this row. `err.message` is what the CUSTOMER would have been told.
       await prisma.transactionLog.create({
         data: {
           orderId: order.id,
           event: "PAYMENT_INSTRUCTIONS_FAILED",
           code: err?.code ?? "ITP_INTERNAL_ERROR",
-          message: "Instruksi pembayaran gagal diterbitkan; dapat dicoba ulang dari halaman transaksi.",
+          message: err?.message || "Instruksi pembayaran gagal diterbitkan; dapat dicoba ulang dari halaman transaksi.",
+          metadata: { method: method?.key ?? null, providerCode: servable?.providerCode ?? null },
         },
       });
     }

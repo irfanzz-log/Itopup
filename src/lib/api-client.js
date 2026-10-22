@@ -10,6 +10,29 @@
 // ============================================================================
 import { CSRF_COOKIE, CSRF_HEADER } from "@/lib/csrf-constants";
 
+// ============================================================================
+// Progress bar integration.
+//
+// Every mutating call (and any GET the forms make) flows through apiFetch, so
+// this is the single point where non-navigation activity can drive the shared
+// loading bar. `__itopupProgress.startFetch()` is installed by RouteProgress
+// (client component in the root layout); before it mounts there is nothing to
+// report to and the property stays undefined — deliberately silent.
+// ============================================================================
+let progressStartFetch = null;
+
+/** Installed by RouteProgress; not app API, do not call from features. */
+export function __installProgressReporter(fn) {
+  progressStartFetch = typeof fn === "function" ? fn : null;
+}
+
+function withProgress(run) {
+  const end = progressStartFetch ? progressStartFetch() : null;
+  return Promise.resolve(run()).finally(() => {
+    if (end) end();
+  });
+}
+
 function readCookie(name) {
   if (typeof document === "undefined") return null;
   const match = document.cookie.match(new RegExp(`(?:^|;\\s*)${name}=([^;]*)`));
@@ -32,57 +55,59 @@ function ensureCsrfCookie() {
  * @param {{ method?: string, body?: unknown, signal?: AbortSignal }} [options]
  * @returns {Promise<{ ok: true, data: any } | { ok: false, error: { code: string, message: string, details?: any[] } }>}
  */
-export async function apiFetch(url, { method = "GET", body, signal } = {}) {
+export function apiFetch(url, { method = "GET", body, signal } = {}) {
   const headers = { Accept: "application/json" };
   if (body !== undefined) headers["Content-Type"] = "application/json";
   if (method !== "GET" && method !== "HEAD") headers[CSRF_HEADER] = ensureCsrfCookie();
 
-  let response;
-  try {
-    response = await fetch(url, {
-      method,
-      headers,
-      credentials: "same-origin",
-      body: body === undefined ? undefined : JSON.stringify(body),
-      signal,
-    });
-  } catch (err) {
-    if (err?.name === "AbortError") throw err;
-    return {
-      ok: false,
-      error: { code: "ITP_NETWORK_ERROR", message: "Koneksi bermasalah. Periksa jaringan Anda." },
-    };
-  }
+  return withProgress(async () => {
+    let response;
+    try {
+      response = await fetch(url, {
+        method,
+        headers,
+        credentials: "same-origin",
+        body: body === undefined ? undefined : JSON.stringify(body),
+        signal,
+      });
+    } catch (err) {
+      if (err?.name === "AbortError") throw err;
+      return {
+        ok: false,
+        error: { code: "ITP_NETWORK_ERROR", message: "Koneksi bermasalah. Periksa jaringan Anda." },
+      };
+    }
 
-  let payload = null;
-  try {
-    payload = await response.json();
-  } catch {
-    // A non-JSON body (a proxy error page, a 502): report it generically.
-    return {
-      ok: false,
-      error: {
-        code: "ITP_INTERNAL_ERROR",
-        message: "Terjadi kesalahan. Silakan coba lagi.",
-        status: response.status,
-      },
-    };
-  }
+    let payload = null;
+    try {
+      payload = await response.json();
+    } catch {
+      // A non-JSON body (a proxy error page, a 502): report it generically.
+      return {
+        ok: false,
+        error: {
+          code: "ITP_INTERNAL_ERROR",
+          message: "Terjadi kesalahan. Silakan coba lagi.",
+          status: response.status,
+        },
+      };
+    }
 
-  if (!response.ok || payload?.success === false) {
-    return {
-      ok: false,
-      error: {
-        code: payload?.error?.code || "ITP_INTERNAL_ERROR",
-        message: payload?.error?.message || "Terjadi kesalahan. Silakan coba lagi.",
-        details: payload?.error?.details,
-        status: response.status,
-        requestId: payload?.requestId,
-      },
-    };
-  }
+    if (!response.ok || payload?.success === false) {
+      return {
+        ok: false,
+        error: {
+          code: payload?.error?.code || "ITP_INTERNAL_ERROR",
+          message: payload?.error?.message || "Terjadi kesalahan. Silakan coba lagi.",
+          details: payload?.error?.details,
+          status: response.status,
+          requestId: payload?.requestId,
+        },
+      };
+    }
 
-  return { ok: true, data: payload?.data };
+    return { ok: true, data: payload?.data };
+  });
 }
 
 /**

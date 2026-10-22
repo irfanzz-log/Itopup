@@ -22,7 +22,27 @@ import { createHash, randomUUID } from "node:crypto";
 import { prisma } from "../db.js";
 import { AppError } from "../errors.js";
 
-export const SESSION_COOKIE = "itp_session";
+export const SESSION_COOKIE = sessionCookieName();
+
+/**
+ * Cookie name per process mode.
+ *
+ * WHY NOT ONE NAME EVERYWHERE: a cookie jar is shared across everything on a
+ * host — `npm run dev` (port 3000), `npm start` with NODE_ENV=production
+ * (port 3000 too), E2E on 3200. A production-mode run sets this cookie with
+ * the Secure flag; Safari/WebKit then refuses every http attempt to overwrite
+ * OR delete it (RFC 6265bis §5.5: a secure cookie is ignored entirely from a
+ * non-secure origin, expiry attempts included), so the browser logged users in
+ * successfully (session row created) yet never sent the fresh cookie back —
+ * permanent guest UI in Safari, working fine in Brave/Chromium. Distinct names
+ * make the collision impossible instead of trying to repair a poisoned jar
+ * (which Safari will not let us do over plain http).
+ */
+function sessionCookieName() {
+  if (process.env.NODE_ENV === "production") return "itp_session";
+  if (process.env.NODE_ENV === "test") return "itp_session_test";
+  return "itp_session_dev";
+}
 
 const ALG = "HS256";
 const ISSUER = "itopup";
@@ -151,14 +171,19 @@ export async function userFromToken(token) {
 export function tokenFromRequest(req) {
   const raw = req?.headers?.get?.("cookie");
   if (!raw) return null;
+  let found = null;
   for (const part of raw.split(";")) {
     const idx = part.indexOf("=");
     if (idx === -1) continue;
-    if (part.slice(0, idx).trim() === SESSION_COOKIE) {
-      return decodeURIComponent(part.slice(idx + 1).trim());
-    }
+    if (part.slice(0, idx).trim() !== SESSION_COOKIE) continue;
+    // LAST duplicate wins, not the first: RFC 6265 §5.4 orders longer-path
+    // and older cookies first, so when a stale clone of this cookie (e.g.
+    // planted by a production-mode run on another port) coexists with the
+    // fresh login value, the fresh one is the last match. First-match-wins
+    // here would silently resurrect the dead token.
+    found = decodeURIComponent(part.slice(idx + 1).trim());
   }
-  return null;
+  return found;
 }
 
 /** Resolve the user from a route-handler request. */

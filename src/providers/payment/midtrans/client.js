@@ -251,6 +251,27 @@ export async function createChargeTransaction({ baseUrl, serverKey, payload, log
       return paymentErr(PAYMENT_ERROR.NOT_CONFIGURED, message, { httpStatus, bodyStatus, raw: body });
     }
 
+    // 402 = the channel is not activated on THIS merchant account.
+    //
+    // Midtrans answers every /v2/charge for a channel the merchant has not had
+    // enabled in their dashboard with HTTP 200 and a BODY status of 402:
+    //
+    //   {"status_code":"402","status_message":"Payment channel is not activated."}
+    //
+    // Before this branch existed the 402 fell through to the bare-400 classifier
+    // below, which read it as a parameter fault and raised REJECTED — telling the
+    // checkout "Pembayaran gagal. Silakan coba lagi." for a merchant-account
+    // setting that no amount of retrying can change. It also meant the channel
+    // stayed OFFERED to every customer while being impossible to pay.
+    //
+    // It is an operator/config problem, exactly like a rejected server key, so it
+    // is reported as NOT_CONFIGURED (503) rather than a payment failure. The
+    // customer is told the method is unavailable, and `isMethodServable` in
+    // index.js is what stops it being offered in the first place.
+    if (bodyStatus === 402) {
+      return paymentErr(PAYMENT_ERROR.NOT_CONFIGURED, message, { httpStatus, bodyStatus, raw: body });
+    }
+
     // A 5xx, ours or a partner's, is UNAVAILABLE, never the 400 branch below.
     //
     // Midtrans relays an upstream outage as `{"status_code":"502","status_message":

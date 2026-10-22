@@ -60,16 +60,28 @@ export async function generateMetadata({ params }) {
     kind,
   });
   const title = buildGameTitle(game.name, kind, productNames);
+  const canonicalPath = `/topup/${category}/${game.slug}`;
 
   return {
     title,
     description,
-    alternates: { canonical: `/topup/${category}/${game.slug}` },
+    keywords: [
+      `top up ${game.name.toLowerCase()}`,
+      `${game.name.toLowerCase()} diamond`,
+      `voucher ${game.name.toLowerCase()}`,
+      `top up game ${game.name.toLowerCase()}`,
+    ],
+    alternates: { canonical: canonicalPath },
     openGraph: {
       title: `${title} | ITOPUP`,
       description,
-      url: `/topup/${category}/${game.slug}`,
+      url: canonicalPath,
       type: "website",
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: `${title} | ITOPUP`,
+      description,
     },
     // Only index a game that actually belongs to the category in its URL,
     // otherwise the same page is reachable under two paths.

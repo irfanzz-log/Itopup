@@ -15,7 +15,14 @@ export const metadata = {
   title: "Syarat & Ketentuan",
   description:
     "Syarat dan ketentuan layanan ITOPUP: ketentuan transaksi, pembayaran, pembatalan, dan tanggung jawab pengguna.",
+  keywords: ["syarat ketentuan", "ketentuan layanan", "kebijakan top up"],
   alternates: { canonical: "/syarat" },
+  openGraph: {
+    title: "Syarat & Ketentuan | ITOPUP",
+    description: "Syarat dan ketentuan layanan ITOPUP.",
+    url: "/syarat",
+    type: "website",
+  },
 };
 
 const SECTIONS = [

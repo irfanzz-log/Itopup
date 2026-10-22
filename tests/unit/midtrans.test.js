@@ -552,6 +552,81 @@ describe("midtransProvider (adapter surface)", () => {
     expect(result.ok).toBe(false);
     expect(result.error.code).toBe("DUPLICATE");
   });
+
+  // ---------------------------------------------------------------------------
+  // A channel the merchant has not ACTIVATED is an operator setting, not a
+  // failed payment.
+  //
+  // Midtrans answers every charge on such a channel with HTTP 200 and a body
+  // status of 402:
+  //   {"status_code":"402","status_message":"Payment channel is not activated."}
+  //
+  // This is the state production was in: the Server Key authenticated fine
+  // (GET /v2/{order}/status returned "Transaction doesn't exist."), and yet
+  // qris, bank_transfer AND gopay all returned 402. Before the 402 branch
+  // existed it fell through to the bare-400 classifier, which read the numeric
+  // code as a malformed payload and raised REJECTED — so the customer was told
+  // "Pembayaran gagal. Silakan coba lagi." for something no retry could fix,
+  // and every one of those charges was logged as ITP_PAYMENT_FAILED.
+  // ---------------------------------------------------------------------------
+  it("classifies a body 402 as NOT_CONFIGURED, not a failed payment", async () => {
+    const { result } = await chargeWithStub({
+      method: "qris",
+      gatewayResponse: { status_code: "402", status_message: "Payment channel is not activated." },
+    });
+
+    expect(result.ok).toBe(false);
+    // NOT_CONFIGURED, not REJECTED: the request was well-formed, the merchant
+    // account is what is missing a setting.
+    expect(result.error.code).toBe("NOT_CONFIGURED");
+    // It must NOT be retried. The charge path retries UNKNOWN/UNAVAILABLE only;
+    // a 402 is deterministic, so retrying it just burns the customer's time.
+    expect(result.error.retryable).toBe(false);
+    // The raw body is kept for the operator log.
+    expect(result.raw?.status_code).toBe("402");
+  });
+
+  it("stops offering a method once the gateway has refused it as not activated", async () => {
+    process.env.MIDTRANS_SERVER_KEY = "Mid-server-TEST";
+    process.env.MIDTRANS_MERCHANT_ID = "M001";
+    vi.resetModules();
+    (await import("@/lib/env.server.js")).clearEnvCache();
+
+    const mod = await import("@/providers/payment/midtrans/index.js");
+    mod.clearUnactivatedChannels();
+
+    // Configured, known channel: offered.
+    expect(mod.midtransProvider.isMethodServable("qris").ok).toBe(true);
+
+    // The gateway refuses it as not activated -> it is remembered...
+    mod.recordUnactivatedChannel("qris");
+
+    // ...and the checkout stops offering it, with an operator-readable reason
+    // rather than a silent disappearance.
+    const after = mod.midtransProvider.isMethodServable("qris");
+    expect(after.ok).toBe(false);
+    expect(after.reason).toBeTruthy();
+
+    // A method Midtrans has no payment_type for can never be charged, so it is
+    // refused here instead of at the gateway.
+    expect(mod.midtransProvider.isMethodServable("manual_bank_bca").ok).toBe(false);
+  });
+
+  it("keeps a method offered while nothing has refused it", async () => {
+    process.env.MIDTRANS_SERVER_KEY = "Mid-server-TEST";
+    process.env.MIDTRANS_MERCHANT_ID = "M001";
+    vi.resetModules();
+    (await import("@/lib/env.server.js")).clearEnvCache();
+
+    const mod = await import("@/providers/payment/midtrans/index.js");
+    mod.clearUnactivatedChannels();
+
+    // Nothing has been charged yet, so no channel may be pre-emptively hidden:
+    // the cache is a record of OBSERVED refusals, never a guess.
+    for (const key of ["qris", "va_bca", "va_mandiri", "retail_alfamart"]) {
+      expect(mod.midtransProvider.isMethodServable(key).ok).toBe(true);
+    }
+  });
 });
 
 /** Sample /v2/charge response bodies, shaped exactly as the sandbox returns them. */

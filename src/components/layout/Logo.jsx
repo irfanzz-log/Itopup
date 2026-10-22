@@ -11,6 +11,7 @@
 // floating inside a tall letterbox.
 // ============================================================================
 import Link from "next/link";
+import { NavProbe } from "./RouteProgress";
 
 // Inlined so the mark ships in the JS chunk and never blocks on a request.
 // Kept here (not in /public) because it is identity, not content: /public is
@@ -51,6 +52,7 @@ export default function Logo({ href = "/", size = "md", showWordmark = true, cla
           ITO<span className="text-brand-600 dark:text-brand-400">PUP</span>
         </span>
       ) : null}
+      <NavProbe />
     </Link>
   );
 }

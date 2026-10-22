@@ -14,7 +14,14 @@ export const metadata = {
   title: "Bantuan & Cara Top Up",
   description:
     "Panduan cara top up game dan pulsa di ITOPUP, plus jawaban untuk pertanyaan yang paling sering ditanyakan.",
+  keywords: ["cara top up", "bantuan top up", "faq pulsa", "panduan game"],
   alternates: { canonical: "/bantuan" },
+  openGraph: {
+    title: "Bantuan & Cara Top Up | ITOPUP",
+    description: "Panduan lengkap cara top up game dan pulsa di ITOPUP.",
+    url: "/bantuan",
+    type: "website",
+  },
 };
 
 const STEPS = [

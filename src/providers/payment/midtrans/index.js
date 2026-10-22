@@ -126,16 +126,81 @@ function configurationGaps() {
 }
 
 /**
- * Per-method servability. Midtrans serves any channel it offers, so this is an
- * adapter-level check, but reporting per method keeps the "why did my method
- * vanish?" answer honest when the gateway is not configured at all.
+ * Channels Midtrans has told us are not activated on this merchant account,
+ * with the time we learned it.
+ *
+ * WHY THIS CACHE EXISTS
+ *
+ * A 402 ("Payment channel is not activated.") is not discoverable before the
+ * first charge: Midtrans has no endpoint that lists a merchant's activated
+ * channels, and the merchant dashboard is the only other source. So the first
+ * customer to pick such a channel is the one who finds out. Without a memory,
+ * every subsequent customer pays that same discovery cost, and the checkout
+ * keeps offering a method that cannot possibly complete.
+ *
+ * The entry is per-process and short-lived: `PROBE_TTL_MS` bounds how long a
+ * fixed dashboard setting can stay invisible, and a cold start clears it. This
+ * is an availability hint, never an authorisation input — it only decides which
+ * methods are OFFERED, and the server still enforces every rule at order time.
+ */
+const unactivatedChannels = new Map();
+const PROBE_TTL_MS = 10 * 60 * 1000;
+
+function isKnownUnactivated(methodKey) {
+  const at = unactivatedChannels.get(methodKey);
+  if (!at) return false;
+  if (Date.now() - at > PROBE_TTL_MS) {
+    unactivatedChannels.delete(methodKey);
+    return false;
+  }
+  return true;
+}
+
+/** Remember that Midtrans refused this channel as not activated. */
+export function recordUnactivatedChannel(methodKey) {
+  if (typeof methodKey === "string" && methodKey) unactivatedChannels.set(methodKey, Date.now());
+}
+
+/** Test/operator hook: forget what we learned about channel activation. */
+export function clearUnactivatedChannels() {
+  unactivatedChannels.clear();
+}
+
+/**
+ * Remember a 402 refusal so the channel stops being offered.
+ *
+ * The refusal carries no field name and no distinguishing code in the error
+ * envelope, so the raw gateway body is what identifies it: Midtrans puts
+ * `status_code: "402"` in the body while the transport is an HTTP 200.
+ */
+function noteUnactivated(result, methodKey) {
+  if (String(result?.raw?.status_code) === "402") recordUnactivatedChannel(methodKey);
+}
+
+/**
+ * Per-method servability.
+ *
+ * Midtrans serves any channel it offers, but "offers" means "the merchant has
+ * ACTIVATED it in their dashboard", and a channel that is not activated is
+ * refused at charge time with a 402. `isConfigured()` cannot see that
+ * difference: the Server Key is perfectly valid while every single channel
+ * returns 402, which is exactly the state that left checkout showing a payment
+ * page with no instructions and no way for the customer to pay.
+ *
+ * A method whose payment_type Midtrans does not know at all is also refused
+ * here rather than at the gateway: a method with no payment_type cannot be
+ * charged, so offering it is a promise the adapter cannot keep.
  */
 function isMethodServable(methodKey) {
   if (!isConfigured()) {
     return { ok: false, reason: "Payment gateway Midtrans belum dikonfigurasi." };
   }
-  // Midtrans decides availability in the dashboard; a method key we map to a
-  // payment type is offered, and Snap hides what the merchant has not enabled.
+  if (!midtransPaymentType(methodKey)) {
+    return { ok: false, reason: "Metode pembayaran ini belum didukung gateway." };
+  }
+  if (isKnownUnactivated(methodKey)) {
+    return { ok: false, reason: "Metode pembayaran ini belum diaktifkan di gateway." };
+  }
   return { ok: true };
 }
 
@@ -535,6 +600,8 @@ export const midtransProvider = {
 
       return mapChargeResult(retried, { input: reissuedInput, paymentType, log });
     }
+
+    noteUnactivated(result, input.method);
 
     return mapChargeResult(result, { input, config, paymentType, log });
   },

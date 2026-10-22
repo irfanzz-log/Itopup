@@ -4,7 +4,9 @@
 // against the live dev server.
 //
 // WHY THIS EXISTS: the order/payment routes require auth. `requireAuth` reads
-// the `itp_session` cookie, verifies the JWT signature, then matches the
+// the session cookie (named per environment by SESSION_COOKIE in
+// src/lib/auth/session.js — `itp_session` in production, `itp_session_dev`/`_test`
+// elsewhere), verifies the JWT signature, then matches the
 // session row on `id = sid` and `tokenHash = sha256(jwt)`, and finally checks
 // `userVersion` against the user's `sessionVersion`. There is no password to
 // type — the OTP is emailed and stored only as a hash — so the only way in is
@@ -17,7 +19,7 @@
 // RUN (dev only; tests/setup.js refuses a prod-looking DATABASE_URL):
 //   ITOPUP_TEST_TARGET=dev npx vitest run --config vitest.ops.config.js
 //
-// Prints a cookie line ready for curl:  itp_session=<jwt>
+// Prints a cookie line ready for curl:  <SESSION_COOKIE>=<jwt>
 // Re-running creates a SECOND session (createSession always inserts), which is
 // fine — the earlier token keeps working until it expires.
 // ============================================================================

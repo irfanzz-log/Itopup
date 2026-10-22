@@ -16,6 +16,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { initials } from "@/lib/format";
 import { ROLE_LABEL } from "@/lib/constants";
+import { NavProbe } from "./RouteProgress";
 
 export default function UserMenu({ user }) {
   const [open, setOpen] = useState(false);
@@ -118,6 +119,7 @@ function MenuLink({ href, children }) {
       className="block rounded-[var(--radius-control)] px-3 py-2 text-sm font-medium text-foreground-muted transition-colors hover:bg-surface-muted hover:text-foreground"
     >
       {children}
+      <NavProbe />
     </Link>
   );
 }

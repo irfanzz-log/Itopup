@@ -28,22 +28,42 @@ export default function robots() {
   return {
     rules: [
       {
-        // Googlebot honours `crawl-delay` only in very limited cases, so it is
-        // omitted rather than written and ignored.
+        // Public content is crawlable; private / per-session surfaces are not.
+        // `allow: /` first, then explicit `disallow` for everything that must
+        // never appear in an index. CSS/JS/images are intentionally NOT blocked
+        // — blocking them breaks rendering and rich-result detection.
         userAgent: "*",
         allow: "/",
         disallow: [
+          // Per-session / authenticated surfaces — no indexable content, no
+          // cacheable response, and they would leak user-specific URLs to an
+          // index if crawled via a shared link.
           "/member/",
           "/dev/",
           "/api/",
+          // Order entry flow — no search intent. A mid-checkout URL has no
+          // static content to index and would waste crawl budget.
           "/checkout/",
-          // The ambiguous legacy path the operator route replaced. It 307s;
-          // listing it keeps a crawler from wasting a request per old link.
+          // Auth flows are `noindex` via metadata, but also disallowed from
+          // crawl budget: they never answer a search query.
+          // Note: listing here does NOT replace the `noindex` on the pages
+          // themselves — `Disallow` only stops fetching, `noindex` is what
+          // removes an already-indexed URL.
+          // We keep /login and /register crawlable so the `noindex` header
+          // can be seen; they are therefore NOT listed here.
+          // The ambiguous legacy pulsa path 307s to the operator page; listing
+          // it avoids one wasted fetch per old external link.
           "/topup/pulsa/pulsa",
+          // Internal Next.js internals that must not be treated as pages
+          "/_next/",
         ],
       },
+      // No `crawl-delay` — Googlebot ignores it outside very limited cases.
     ],
     sitemap: [absoluteUrl("/sitemap.xml")],
+    // `host` is deprecated in Google's robots.txt spec and ignored. Kept only
+    // for legacy crawlers; the canonical origin is `metadataBase` + sitemap
+    // absolute URLs.
     host: absoluteUrl("").replace(/^https?:\/\//, ""),
   };
 }

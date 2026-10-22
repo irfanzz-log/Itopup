@@ -3,6 +3,8 @@ import { ThemeProvider, themeInitScript } from "@/components/theme/ThemeProvider
 import SiteHeader from "@/components/layout/SiteHeader";
 import Footer from "@/components/layout/Footer";
 import AnnouncementBanner from "@/components/layout/AnnouncementBanner";
+import RouteProgress from "@/components/layout/RouteProgress";
+import WebAnalytics from "@/components/analytics/WebAnalytics";
 import { readAnnouncement } from "@/services/announcement.service.js";
 import { SITE_URL } from "@/lib/site-url.js";
 
@@ -17,8 +19,17 @@ export const metadata = {
   applicationName: "ITOPUP",
   keywords: [
     "top up game", "top up diamond", "top up pulsa",
-    "mobile legends", "free fire", "pubg mobile", "genshin impact", "roblox",
+    "top up mobile legends", "top up free fire", "top up pubg mobile", "top up genshin impact", "top up roblox", "top up codm",
+    "pulsa telkomsel", "pulsa xl", "pulsa tri", "pulsa indosat",
+    "voucher game", "saldo game",
   ],
+  authors: [{ name: "ITOPUP" }],
+  creator: "ITOPUP",
+  publisher: "ITOPUP",
+  formatDetection: { email: false, address: false, telephone: false },
+  alternates: {
+    canonical: "/",
+  },
   openGraph: {
     type: "website",
     locale: "id_ID",
@@ -37,10 +48,18 @@ export const metadata = {
     // Public pages are indexable; the /member and /dev groups override this.
     index: true,
     follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-image-preview": "large",
+      "max-snippet": -1,
+      "max-video-preview": -1,
+    },
   },
   icons: {
     icon: [{ url: "/icon.svg", type: "image/svg+xml" }],
   },
+  category: "games",
 };
 
 export const viewport = {
@@ -69,14 +88,19 @@ export default async function RootLayout({ children }) {
       </head>
       <body className="flex min-h-screen flex-col bg-background font-sans text-foreground antialiased">
         <ThemeProvider>
-          <a href="#main" className="skip-link">Lewati ke konten utama</a>
-          {/* ABOVE the header: the announcement is the first thing a customer
-              sees on every page. Rendered server-side so it is present in the
-              first paint and in the no-JS view. */}
-          <AnnouncementBanner announcement={announcement} />
-          <SiteHeader />
-          <main id="main" className="flex-1">{children}</main>
-          <Footer />
+          <RouteProgress>
+            <a href="#main" className="skip-link">Lewati ke konten utama</a>
+            {/* ABOVE the header: the announcement is the first thing a customer
+                sees on every page. Rendered server-side so it is present in the
+                first paint and in the no-JS view. */}
+            <AnnouncementBanner announcement={announcement} />
+            <SiteHeader />
+            <main id="main" className="flex-1">{children}</main>
+            <Footer />
+          </RouteProgress>
+          {/* Outside RouteProgress on purpose: analytics is not navigation UI,
+              and must not be unmounted by anything that remounts the shell. */}
+          <WebAnalytics />
         </ThemeProvider>
       </body>
     </html>

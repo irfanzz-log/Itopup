@@ -18,6 +18,8 @@ import { useEffect, useRef, useState } from "react";
 import Logo from "./Logo";
 import ThemeToggle from "@/components/theme/ThemeToggle";
 import UserMenu from "./UserMenu";
+import GuestMenu from "./GuestMenu";
+import { NavProbe, RouteProgressBar } from "./RouteProgress";
 
 export default function NavBar({ user, categories, popularGames }) {
   const pathname = usePathname();
@@ -74,6 +76,7 @@ export default function NavBar({ user, categories, popularGames }) {
 
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-surface/90 backdrop-blur supports-[backdrop-filter]:bg-surface/75">
+      <RouteProgressBar />
       <div className="container-page flex h-16 items-center justify-between gap-4">
         <Logo />
 
@@ -111,6 +114,7 @@ export default function NavBar({ user, categories, popularGames }) {
                         className="text-xs font-bold uppercase tracking-wide text-brand-600 dark:text-brand-400 hover:underline"
                       >
                         {category.name}
+                        <NavProbe />
                       </Link>
                       <ul className="mt-2.5 space-y-1.5">
                         {/* listGamesGrouped returns `entries`, for PULSA those are
@@ -124,6 +128,7 @@ export default function NavBar({ user, categories, popularGames }) {
                               className="block truncate rounded px-1.5 py-1 text-sm text-foreground-muted transition-colors hover:bg-surface-muted hover:text-foreground"
                             >
                               {entry.name}
+                              <NavProbe />
                             </Link>
                           </li>
                         ))}
@@ -157,10 +162,7 @@ export default function NavBar({ user, categories, popularGames }) {
           {user ? (
             <UserMenu user={user} />
           ) : (
-            <div className="hidden items-center gap-2 sm:flex">
-              <Link href="/login" className="btn-ghost">Masuk</Link>
-              <Link href="/register" className="btn-primary btn-sm px-4 py-2">Daftar</Link>
-            </div>
+            <GuestMenu nextPath={pathname} />
           )}
 
           {/* ── Mobile hamburger ─────────────────────────────────────────── */}
@@ -210,6 +212,7 @@ export default function NavBar({ user, categories, popularGames }) {
                 >
                   {category.name}
                   <ArrowRight />
+                  <NavProbe />
                 </Link>
                 <ul className="mt-1.5 grid grid-cols-2 gap-1.5">
                   {(category.entries ?? category.games ?? []).map((entry) => (
@@ -265,6 +268,7 @@ function NavLink({ href, active, children }) {
       ].join(" ")}
     >
       {children}
+      <NavProbe />
     </Link>
   );
 }
@@ -284,6 +288,7 @@ function MobileLink({ href, children }) {
       >
         {children}
         <ArrowRight />
+        <NavProbe />
       </Link>
     </li>
   );

@@ -39,10 +39,22 @@ export async function generateMetadata({ params }) {
     PULSA: "Beli pulsa semua operator Indonesia dengan proses otomatis dan harga bersaing.",
   };
 
+  const title = titles[kind] ?? `Top Up ${label}`;
+  const description = descriptions[kind] ?? `Layanan top up ${label} dengan proses otomatis.`;
+
   return {
-    title: titles[kind] ?? `Top Up ${label}`,
-    description: descriptions[kind] ?? `Layanan top up ${label} dengan proses otomatis.`,
+    title,
+    description,
+    keywords: kind === "PULSA"
+      ? ["pulsa telkomsel", "pulsa xl", "pulsa tri", "isi pulsa", "top up pulsa"]
+      : ["top up game", "top up diamond", "top up mobile legends", "top up free fire", "voucher game"],
     alternates: { canonical: `/topup/${category}` },
+    openGraph: {
+      title: `${title} | ITOPUP`,
+      description,
+      url: `/topup/${category}`,
+      type: "website",
+    },
   };
 }
 

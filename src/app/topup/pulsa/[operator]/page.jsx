@@ -71,15 +71,23 @@ export async function generateMetadata({ params }) {
     minPrice,
   });
 
+  const canonicalPath = `/topup/pulsa/${operator.slug}`;
+
   return {
     title: `Top Up ${operator.name}`,
     description,
-    alternates: { canonical: `/topup/pulsa/${operator.slug}` },
+    keywords: [`pulsa ${operator.name.toLowerCase()}`, `isi pulsa ${operator.name.toLowerCase()}`, "top up pulsa", operator.name.toLowerCase()],
+    alternates: { canonical: canonicalPath },
     openGraph: {
       title: `Top Up ${operator.name} | ITOPUP`,
       description,
-      url: `/topup/pulsa/${operator.slug}`,
+      url: canonicalPath,
       type: "website",
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: `Top Up ${operator.name} | ITOPUP`,
+      description,
     },
     other: { "product:category": "Pulsa" },
   };

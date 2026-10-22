@@ -16,7 +16,14 @@ export const metadata = {
   title: "Top Up Game & Pulsa",
   description:
     "Pilih layanan top up: game (Mobile Legends, Free Fire, PUBG Mobile, Genshin Impact, Roblox, CODM) dan pulsa semua operator Indonesia.",
+  keywords: ["top up game", "top up pulsa", "isi pulsa", "top up diamond", "layanan game"],
   alternates: { canonical: "/topup" },
+  openGraph: {
+    title: "Top Up Game & Pulsa | ITOPUP",
+    description: "Top up game dan pulsa semua operator — proses otomatis, harga transparan.",
+    url: "/topup",
+    type: "website",
+  },
 };
 
 export default async function TopupHubPage() {

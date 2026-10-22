@@ -17,7 +17,7 @@ import { Alert, Badge, Spinner } from "@/components/ui/primitives";
 import StepIndicator from "@/components/ui/StepIndicator";
 import { apiPost, apiGet } from "@/lib/api-client";
 import { deriveIdempotencyKey } from "@/lib/checkout-key";
-import { isSecretField, normalisePhoneId, phoneErrorMessage } from "@/config/input-fields";
+import { isSecretField, secretFieldKeys, normalisePhoneId, phoneErrorMessage } from "@/config/input-fields";
 import { phoneMatchesOperator, OPERATOR_DISPLAY_NAME } from "@/config/operators";
 import { formatIDR, formatNumber, variantLabel } from "@/lib/format";
 import { filterMethodsForPurchase } from "@/config/payment";
@@ -159,9 +159,14 @@ export default function TopupForm({ game, products, paymentMethods, initialPrice
 
   const saveDraft = useCallback(() => {
     try {
+      const secretKeys = new Set(secretFieldKeys(game.inputFields));
+      const safeFields = {};
+      for (const [k, v] of Object.entries(fields)) {
+        if (!secretKeys.has(k)) safeFields[k] = v;
+      }
       sessionStorage.setItem(
         draftKey(game.slug),
-        JSON.stringify({ productId, variantId, fields, promoCode, paymentMethod })
+        JSON.stringify({ productId, variantId, fields: safeFields, promoCode, paymentMethod })
       );
     } catch {
       // Private mode / quota: the flow still works, it just will not resume.
@@ -368,7 +373,13 @@ export default function TopupForm({ game, products, paymentMethods, initialPrice
     // Not signed in: the draft is already saved, so send them to login and come
     // straight back to this page with the selection intact.
     if (result.status === 401) {
-      const back = `/topup/${categorySegment(game)}/${game.slug}`;
+      // Pulsa operators live at /topup/pulsa/[operator], not /topup/pulsa/pulsa.
+      // product.slug is the operator's slug on pulsa pages (single-product
+      // pages); for game pages it is irrelevant.
+      const back =
+        game.categoryKind === "PULSA" && product?.slug
+          ? `/topup/pulsa/${product.slug}`
+          : `/topup/${categorySegment(game)}/${game.slug}`;
       router.push(`/login?next=${encodeURIComponent(back)}`);
       return;
     }
