@@ -290,15 +290,22 @@ model Order {
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
   items            OrderItem[]
-  provider         Provider?       @relation(fields: [providerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  provider         Provider?       @relation(fields: [providerId], references: [id], onDelete: SetNull, onUpdate: Cascade)
   user             User             @relation(fields: [userId], references: [id])
   payment          Payment?
   logs             TransactionLog[]
   /// The stored game login this order was placed against. The relation is what
   /// lets dispatch reload the ciphertext. It is deliberately NOT cascading
-  /// (ON DELETE NO ACTION in the migration): deleting a stored login is refused
-  /// while an order still references it, so history is never silently rewritten.
-  credential       GameCredential?  @relation(fields: [credentialId], references: [id])
+  /// (ON DELETE NO ACTION): deleting a stored login is refused while an order
+  /// still references it, so history is never silently rewritten.
+  ///
+  /// This MUST stay NoAction/NoAction to match
+  /// 20261002060000_order_credential_relation. An optional relation defaults to
+  /// SET NULL, which is what this declaration used to fall back to — so
+  /// `schema.prisma` and the migrations disagreed, and any future
+  /// `prisma migrate dev` or `db push` would have silently rewritten the
+  /// constraint on the live database.
+  credential       GameCredential?  @relation(fields: [credentialId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@unique([userId, idempotencyKey])
   @@unique([providerId, providerRef])
@@ -307,6 +314,9 @@ model Order {
   @@index([status, expiresAt])
   @@index([invoice])
   @@index([createdAt])
+  /// Dispatch looks an order up by the stored login it was placed against.
+  /// Declared here because 20261002060000_order_credential_relation creates it.
+  @@index([credentialId])
   @@map("orders")
 }
 
@@ -815,4 +825,74 @@ enum ClaimStatus {
   REDEEMED
   /// Admin revoked it, or the voucher's audience/quota changed. Never spendable.
   VOIDED
+}
+
+/// Traffic / activity trail behind /dev/statistics.
+///
+/// WHY A TABLE AND NOT JUST VERCEL ANALYTICS: Vercel Web Analytics answers
+/// "how many visitors", but it is aggregate-only, cookieless and anonymised. It
+/// cannot answer "which requests hit this app in the last hour, from which IP,
+/// with which status, and does that look like an attack" — that needs a row per
+/// event with the address and the status code, which is exactly what this table
+/// is for.
+///
+/// PRIVACY CONTRACT (same rule as AuditLog): the IP and user agent are stored
+/// for security forensics only and are NEVER surfaced in the member-facing UI.
+/// The path is stored WITHOUT the query string, so a token or an email that a
+/// caller put in a URL cannot land here. `metadata` never carries secrets.
+model TrafficEvent {
+  id        String   @id @default(uuid())
+  /// Coarse classification so the dashboard can group without parsing paths:
+  /// PAGE_VIEW, API_CALL, AUTH_FAILURE, WEBHOOK, BOT, SCAN, FATAL.
+  kind      String
+  /// HTTP method, e.g. GET / POST.
+  method    String?
+  /// Pathname only. Query strings are stripped before insert.
+  path      String
+  /// HTTP status, when the event came from a response. NULL for client-side
+  /// page views, which have no status of their own.
+  status    Int?
+  /// Internal error code (ITP_*) for failures, so the log detail can show what
+  /// the caller was told without re-deriving it from the status.
+  code      String?
+  /// One-line human summary. Never a stack trace, never a payload dump.
+  message   String?
+  /// Full detail for the log-detail screen: redacted fields only.
+  metadata  Json?
+  ip        String?
+  userAgent String?
+  /// Referrer hostname only (never the full URL, which can carry a query).
+  referrer  String?
+  /// SHA-256 of the first-party visitor cookie (`itp_vid`). Unique visitors =
+  /// COUNT(DISTINCT visitorHash). NULL for cookieless clients, which fall back
+  /// to `ip` so the number stays honest instead of inflating.
+  visitorHash String?
+  userId    String?
+  /// Short correlation id, matches the API envelope's requestId.
+  requestId String?
+  /// SECURITY VERDICT, computed at write time by traffic.classify():
+  /// NORMAL | SUSPICIOUS | HOSTILE. Stored, not derived on read, because the
+  /// verdict must stay stable even if the rules are tuned later: "we flagged
+  /// this at the time" is the forensic claim, not "we would flag it now".
+  verdict   String   @default("NORMAL")
+  /// Why the verdict is not NORMAL. Empty for NORMAL rows.
+  verdictReason String?
+  /// Which rule produced the verdict, e.g. RATE_LIMIT_BURST, AUTH_BRUTE_FORCE.
+  verdictRule   String?
+  /// Severity for the fatal log: FATAL > ERROR > WARN > INFO.
+  severity  String   @default("INFO")
+  durationMs Int?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([kind, createdAt])
+  @@index([verdict, createdAt])
+  @@index([ip, createdAt])
+  @@index([severity, createdAt])
+  @@index([path, createdAt])
+  /// Backs COUNT(DISTINCT visitorHash) over a time window — the visitor count on
+  /// /dev/statistics. Declared here because 20261022010000_traffic_visitor_hash
+  /// creates it.
+  @@index([visitorHash, createdAt])
+  @@map("traffic_events")
 }

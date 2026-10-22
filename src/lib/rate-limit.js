@@ -44,6 +44,11 @@ export const presets = {
   // money. Fails open.
   webhook: { limit: intFromEnv("RL_WEBHOOK", 300), windowMs: WINDOW_MS, failClosed: false },
   admin: { limit: intFromEnv("RL_ADMIN", 120), windowMs: WINDOW_MS, failClosed: false },
+  // Page-view beacons: one per client navigation, so this is the highest-volume
+  // bucket in the app. Generous (a real visitor cannot produce 120 navigations
+  // a minute) but finite, because an unbounded beacon is an unbounded write
+  // path into the traffic table. Fails open: losing a statistic is not an outage.
+  pageview: { limit: intFromEnv("RL_PAGEVIEW", 120), windowMs: WINDOW_MS, failClosed: false },
   def: { limit: intFromEnv("RL_DEFAULT", 60), windowMs: WINDOW_MS, failClosed: false },
 };
 

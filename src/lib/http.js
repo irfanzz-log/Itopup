@@ -11,6 +11,9 @@
 import { NextResponse } from "next/server";
 import { AppError, ERROR_STATUS } from "./errors.js";
 import { createLogger } from "./logger.js";
+import { clientIp } from "./rate-limit.js";
+import { recordTraffic } from "./traffic/record.js";
+import { KIND, SEVERITY } from "./traffic/classify.js";
 
 export function requestId(req) {
   return (
@@ -68,6 +71,17 @@ export function toFail(err, { req, logger: parentLogger } = {}) {
       path: req?.nextUrl?.pathname,
       method: req?.method,
     });
+    // Traffic trail: a handled failure is still an event, and a burst of them
+    // is what the verdict rules are looking for. Fire-and-forget, because the
+    // response must not wait on the statistics table.
+    recordRequestTraffic({
+      req,
+      status: err.status,
+      code: err.code,
+      message: err.message,
+      requestId: rid,
+      kind: kindForRequest(req, err.code),
+    });
     return fail(err.code, err.message, { status: err.status, details: err.details, req });
   }
 
@@ -89,6 +103,14 @@ export function toFail(err, { req, logger: parentLogger } = {}) {
       method: req?.method,
       fields: details.map((d) => d.field),
     });
+    recordRequestTraffic({
+      req,
+      status: ERROR_STATUS.ITP_VALIDATION_ERROR,
+      code: "ITP_VALIDATION_ERROR",
+      message: details[0]?.message,
+      requestId: rid,
+      kind: KIND.API_CALL,
+    });
     return fail("ITP_VALIDATION_ERROR", details[0]?.message || "Data tidak valid.", {
       status: ERROR_STATUS.ITP_VALIDATION_ERROR,
       details,
@@ -101,7 +123,60 @@ export function toFail(err, { req, logger: parentLogger } = {}) {
     path: req?.nextUrl?.pathname,
     method: req?.method,
   });
+  // The FATAL path. This is the row /dev/statistics?tab=fatal reads: an
+  // unhandled exception is the one class of event an operator must never have
+  // to find by grepping logs.
+  recordRequestTraffic({
+    req,
+    status: 500,
+    code: err?.code ?? "ITP_INTERNAL_ERROR",
+    message: err?.message ?? "Unhandled error",
+    requestId: rid,
+    kind: KIND.FATAL,
+    severity: SEVERITY.FATAL,
+    metadata: { errorName: err?.name ?? null },
+  });
   return fail("ITP_INTERNAL_ERROR", undefined, { req });
+}
+
+/**
+ * Record one HTTP request in the traffic trail.
+ *
+ * NEVER AWAITED. `recordTraffic` writes to Postgres, and the response is
+ * already computed; making the caller wait for the statistics table would put
+ * a second database round trip on every 4xx/5xx in the app. A dropped sample
+ * under extreme load is the correct trade.
+ */
+function recordRequestTraffic(input) {
+  try {
+    recordTraffic({
+      kind: input.kind ?? KIND.API_CALL,
+      method: input.req?.method ?? null,
+      path: input.req?.nextUrl?.pathname ?? input.req?.url ?? "/",
+      status: input.status ?? null,
+      code: input.code ?? null,
+      message: input.message ?? null,
+      metadata: input.metadata ?? null,
+      ip: clientIp(input.req),
+      userAgent: input.req?.headers?.get?.("user-agent") ?? null,
+      referrer: input.req?.headers?.get?.("referer") ?? null,
+      requestId: input.requestId ?? null,
+      severity: input.severity ?? null,
+    }).catch(() => {});
+  } catch {
+    /* the recorder must never be able to throw into an error path */
+  }
+}
+
+/** Which kind a failing request belongs to, judged from its path and code. */
+function kindForRequest(req, code) {
+  const path = req?.nextUrl?.pathname ?? "";
+  if (path.startsWith("/api/webhooks")) return KIND.WEBHOOK;
+  if (code === "ITP_INVALID_CREDENTIALS" || code === "ITP_ACCOUNT_BLOCKED" || code === "ITP_WEBHOOK_INVALID_SIGNATURE") {
+    return KIND.AUTH_FAILURE;
+  }
+  if (path.startsWith("/api/")) return KIND.API_CALL;
+  return KIND.PAGE_VIEW;
 }
 
 /**

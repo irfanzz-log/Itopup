@@ -11,6 +11,7 @@ import DevNavLinks from "./DevNavLinks";
 
 export const DEV_LINKS = [
   { href: "/dev/dashboard", label: "Dashboard", icon: "grid" },
+  { href: "/dev/statistics", label: "Statistik", icon: "activity" },
   { href: "/dev/orders", label: "Transaksi", icon: "receipt" },
   { href: "/dev/members", label: "Member", icon: "users" },
   { href: "/dev/products", label: "Produk & Harga", icon: "box" },
