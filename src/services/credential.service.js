@@ -46,13 +46,33 @@ const SAFE_SELECT = {
 /**
  * Logins the user has stored for one game, newest-used first.
  *
- * @param {{ userId: string, gameId: string }} input
+ * Accepts EITHER `gameId` or `gameSlug`. The route receives a slug (that is what
+ * the catalogue URL carries), and the service used to read only `gameId`, so
+ * every list came back empty — the "Voucher Saya"-style picker for a stored game
+ * login could never show anything. Resolving the slug here keeps the caller
+ * free of a second lookup and keeps `userId` in the query either way.
+ *
+ * @param {{ userId: string, gameId?: string, gameSlug?: string }} input
  * @returns {Promise<Array<{ id: string, login: string, lastUsedAt: Date|null, createdAt: Date }>>}
  */
-export async function listGameCredentials({ userId, gameId }) {
-  if (!userId || !gameId) return [];
+export async function listGameCredentials({ userId, gameId = null, gameSlug = null }) {
+  if (!userId) return [];
+
+  let resolvedGameId = gameId;
+  if (!resolvedGameId && gameSlug) {
+    const game = await prisma.game.findUnique({
+      where: { slug: String(gameSlug) },
+      select: { id: true },
+    });
+    // An unknown slug is "no stored logins", not an error: the caller is a
+    // picker that simply has nothing to offer.
+    if (!game) return [];
+    resolvedGameId = game.id;
+  }
+  if (!resolvedGameId) return [];
+
   return prisma.gameCredential.findMany({
-    where: { userId, gameId },
+    where: { userId, gameId: resolvedGameId },
     select: SAFE_SELECT,
     orderBy: [{ lastUsedAt: { sort: "desc", nulls: "first" } }, { createdAt: "desc" }],
   });

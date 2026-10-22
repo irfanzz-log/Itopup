@@ -246,9 +246,22 @@ async function main() {
         for (const [index, entry] of variants.entries()) {
           const slug = variantSlug(entry, index);
           const costPrice = Number(entry.costPrice);
-          if (!Number.isFinite(costPrice) || costPrice <= 0) {
+
+          // A variant with no provider price is NOT a seed error — it is a
+          // placeholder the provider sync has not priced yet. Eight games
+          // (8 Ball Pool, Honkai, ZZZ, Unipin, …) ship costPrice 0 in
+          // VARIANT_SEED, and the old hard failure meant a fresh install could
+          // not be seeded at all: `npm run db:seed` aborted on the first one and
+          // left a half-populated catalogue.
+          //
+          // Such a variant is written INACTIVE. That is the honest state: it
+          // exists so the game page is complete, and checkout refuses it
+          // (ITP_PRODUCT_UNAVAILABLE) instead of selling a product at a price
+          // nobody ever set. A negative price is still a bug and still throws.
+          if (!Number.isFinite(costPrice) || costPrice < 0) {
             throw new Error(`costPrice tidak valid untuk ${gameSlug}/${product.slug}/${slug}`);
           }
+          const priced = costPrice > 0;
 
           // The selling price is DERIVED, never typed twice. Changing the markup
           // in src/config/pricing.js and re-running the seed reprices everything
@@ -261,8 +274,9 @@ async function main() {
           // A variant may be defined but NOT sellable — e.g. eFootball, whose
           // provider flow demands the customer's game password. The catalogue
           // still lists it so the game page is honest about what exists, while
-          // checkout refuses it. Defaults to active.
-          const isActive = entry.isActive !== false;
+          // checkout refuses it. Defaults to active, but an unpriced variant
+          // (see `priced` above) is always inactive.
+          const isActive = priced && entry.isActive !== false;
 
           await prisma.productVariant.upsert({
             where: { productId_slug: { productId: productRow.id, slug } },
@@ -284,6 +298,10 @@ async function main() {
               costPrice,
               sellingPrice,
               sortOrder: entry.sortOrder ?? index,
+              // Was missing: `create` fell back to the schema default (true), so
+              // a freshly seeded database sold every variant regardless of what
+              // the update path would have written.
+              isActive,
             },
           });
           variantCount += 1;

@@ -109,9 +109,19 @@ async function handle(req) {
     const result = await expireStaleOrders({ limit: 500 });
     return ok({ ...result, at: new Date().toISOString() }, { req });
   } catch (err) {
-    return fail("ITP_INTERNAL", "Sweep kedaluwarsa gagal dijalankan.", {
-      status: 502, req,
-      details: { message: String(err?.message ?? err).slice(0, 200) },
+    // No `details`: the raw driver message names tables and columns, and this
+    // response is returned over HTTP. The operator gets the log line instead.
+    console.error(
+      JSON.stringify({
+        ts: new Date().toISOString(),
+        level: "error",
+        event: "cron.expire_failed",
+        error: String(err?.message ?? err).slice(0, 300),
+      })
+    );
+    return fail("ITP_PROVIDER_ERROR", "Sweep kedaluwarsa gagal dijalankan.", {
+      status: 502,
+      req,
     });
   }
 }

@@ -18,7 +18,7 @@ const pooled = process.env.DATABASE_URL?.trim();
 
 export default defineConfig({
   schema: "prisma/schema.prisma",
-  migrations: { path: "prisma/migrations", seed: "node prisma/seed.js" },
+  migrations: { path: "prisma/migrations", seed: "tsx prisma/seed.js" },
   // DIRECT_URL wins when present (Supabase: port 5432). Falls back to the
   // pooled URL so a local Postgres with a single connection string still works.
   datasource: { url: direct || pooled },

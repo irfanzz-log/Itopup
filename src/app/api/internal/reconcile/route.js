@@ -112,10 +112,19 @@ async function handle(req) {
       { req }
     );
   } catch (err) {
-    return fail("ITP_INTERNAL", "Sweep rekonsiliasi gagal dijalankan.", {
+    // No `details`: the raw driver message names tables and columns, and this
+    // response is returned over HTTP. The operator gets the log line instead.
+    console.error(
+      JSON.stringify({
+        ts: new Date().toISOString(),
+        level: "error",
+        event: "cron.reconcile_failed",
+        error: String(err?.message ?? err).slice(0, 300),
+      })
+    );
+    return fail("ITP_PROVIDER_ERROR", "Sweep rekonsiliasi gagal dijalankan.", {
       status: 502,
       req,
-      details: { message: String(err?.message ?? err).slice(0, 200) },
     });
   }
 }

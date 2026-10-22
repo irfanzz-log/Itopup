@@ -15,6 +15,9 @@ export const ERROR_STATUS = {
   ITP_VALIDATION_ERROR: 422,
   ITP_INVALID_INPUT: 400,
   ITP_INVALID_ACCOUNT: 422,
+  // The number's prefix belongs to a different operator than the product the
+  // customer picked. 422: their input is well-formed but wrong for this product.
+  ITP_PHONE_OPERATOR_MISMATCH: 422,
   ITP_PAYLOAD_TOO_LARGE: 413,
   ITP_BAD_REQUEST: 400,
 
@@ -57,6 +60,20 @@ export const ERROR_STATUS = {
   ITP_INVALID_STATE_TRANSITION: 409,
   ITP_ORDER_EXPIRED: 410,
   ITP_ORDER_NOT_PAYABLE: 409,
+  // A customer cancelling an order that is already paid, or already dead, is a
+  // state conflict, not a server fault. Without this entry the route's own
+  // AppError was silently rewritten to ITP_INTERNAL_ERROR by `fail()`, so a
+  // paid order answered 500 instead of 409.
+  ITP_ORDER_NOT_CANCELLABLE: 409,
+
+  // ── Game credentials (needsGameLogin games) ──────────────────────────────
+  // 404: a credential id that is not the caller's must be indistinguishable
+  // from one that never existed, so this is a not-found, never a 403.
+  ITP_CREDENTIAL_NOT_FOUND: 404,
+  // 409: the stored login exists but cannot be used (deleted mid-flight, or
+  // AUTH_SECRET rotated so the ciphertext no longer decrypts). The order is
+  // failed; retrying the same id would fail again.
+  ITP_CREDENTIAL_UNAVAILABLE: 409,
 
   // ── Payment ──────────────────────────────────────────────────────────────
   ITP_PAYMENT_FAILED: 502,
@@ -65,6 +82,10 @@ export const ERROR_STATUS = {
   ITP_PAYMENT_NOT_FOUND: 404,
   ITP_PAYMENT_ALREADY_PAID: 409,
   ITP_PAYMENT_AMOUNT_MISMATCH: 400,
+  // The customer asked to cancel while the gateway refused to void the charge.
+  // 502: the failure is upstream, and retrying a moment later is exactly what
+  // the UI tells the customer to do.
+  ITP_GATEWAY_CANCEL_FAILED: 502,
   ITP_WEBHOOK_INVALID_SIGNATURE: 401,
   ITP_WEBHOOK_UNKNOWN_REFERENCE: 404,
 
@@ -79,6 +100,7 @@ export const ERROR_STATUS = {
   // ── Generic ──────────────────────────────────────────────────────────────
   ITP_CONFLICT: 409,
   ITP_CHECKOUT_PAUSED: 503,
+  ITP_METHOD_NOT_ALLOWED: 405,
   ITP_INTERNAL_ERROR: 500,
 };
 
@@ -120,12 +142,17 @@ export const ERROR_MESSAGE = {
   ITP_INVALID_STATE_TRANSITION: "Status transaksi tidak dapat diubah.",
   ITP_ORDER_EXPIRED: "Transaksi sudah kedaluwarsa.",
   ITP_ORDER_NOT_PAYABLE: "Transaksi ini tidak dapat dibayar lagi.",
+  ITP_ORDER_NOT_CANCELLABLE: "Transaksi ini tidak dapat dibatalkan.",
+  ITP_CREDENTIAL_NOT_FOUND: "Login game tersimpan tidak ditemukan.",
+  ITP_CREDENTIAL_UNAVAILABLE: "Login game tersimpan tidak dapat digunakan. Silakan pesan ulang.",
+  ITP_PHONE_OPERATOR_MISMATCH: "Nomor HP tidak sesuai dengan operator yang dipilih.",
   ITP_PAYMENT_FAILED: "Pembayaran gagal. Silakan coba lagi.",
   ITP_PAYMENT_UNAVAILABLE: "Metode pembayaran sedang tidak tersedia.",
   ITP_PAYMENT_NOT_CONFIGURED: "Metode pembayaran belum dikonfigurasi.",
   ITP_PAYMENT_NOT_FOUND: "Transaksi ini belum memiliki data pembayaran.",
   ITP_PAYMENT_ALREADY_PAID: "Pembayaran sudah lunas.",
   ITP_PAYMENT_AMOUNT_MISMATCH: "Nominal pembayaran tidak sesuai.",
+  ITP_GATEWAY_CANCEL_FAILED: "Tidak bisa membatalkan pembayaran di gateway. Coba beberapa saat lagi.",
   ITP_WEBHOOK_INVALID_SIGNATURE: "Signature tidak valid.",
   ITP_WEBHOOK_UNKNOWN_REFERENCE: "Referensi tidak dikenal.",
   ITP_PROVIDER_TIMEOUT: "Provider tidak merespons. Transaksi akan dicek ulang otomatis.",
@@ -136,6 +163,7 @@ export const ERROR_MESSAGE = {
   ITP_PROVIDER_UNKNOWN_STATE: "Status transaksi sedang diverifikasi.",
   ITP_CONFLICT: "Data sudah ada.",
   ITP_CHECKOUT_PAUSED: "Transaksi untuk sementara dinonaktifkan. Silakan coba lagi nanti.",
+  ITP_METHOD_NOT_ALLOWED: "Metode HTTP tidak diizinkan.",
   ITP_INTERNAL_ERROR: "Terjadi kesalahan. Silakan coba lagi.",
 };
 

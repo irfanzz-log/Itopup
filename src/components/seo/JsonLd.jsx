@@ -21,14 +21,28 @@ export default function JsonLd({ data }) {
     return null;
   }
 
+  // ── ESCAPE BEFORE INJECTING ───────────────────────────────────────────────
+  //
+  // A `<script>` element's content is RAW TEXT: the HTML parser does not decode
+  // entities inside it, and it terminates the element at the first literal
+  // `</script`. `JSON.stringify` does NOT escape `/` or `<`, so a name of
+  // `</script><img src=x onerror=...>` closes this tag and injects live markup
+  // into the page. The data here is not always ours: `name` comes from
+  // Game.name / Product.name, which an operator types in /dev/products, so this
+  // was a stored-XSS sink for anyone who could edit the catalogue.
+  //
+  // Escaping `<`, `>` and `&` as JSON unicode escapes is the documented safe
+  // pattern: the value is unchanged once parsed as JSON, but no byte sequence in
+  // the output can close the element or open a new tag.
+  const safe = json
+    .replace(/</g, "\\u003c")
+    .replace(/>/g, "\\u003e")
+    .replace(/&/g, "\\u0026");
+
   return (
     <script
       type="application/ld+json"
-      // JSON.stringify output cannot contain "</script>" unless the data
-      // contains a literal closing tag, which this builder never produces.
-      // React escapes "<" in children by default; keeping the script body as a
-      // raw string here is the standard pattern for JSON-LD.
-      dangerouslySetInnerHTML={{ __html: json }}
+      dangerouslySetInnerHTML={{ __html: safe }}
     />
   );
 }
