@@ -19,7 +19,7 @@ import Logo from "./Logo";
 import ThemeToggle from "@/components/theme/ThemeToggle";
 import UserMenu from "./UserMenu";
 import GuestMenu from "./GuestMenu";
-import { NavProbe, RouteProgressBar } from "./RouteProgress";
+import { NavProbe } from "./RouteProgress";
 
 export default function NavBar({ user, categories, popularGames }) {
   const pathname = usePathname();
@@ -76,7 +76,6 @@ export default function NavBar({ user, categories, popularGames }) {
 
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-surface/90 backdrop-blur supports-[backdrop-filter]:bg-surface/75">
-      <RouteProgressBar />
       <div className="container-page flex h-16 items-center justify-between gap-4">
         <Logo />
 

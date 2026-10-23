@@ -99,9 +99,27 @@ export function NavProbe() {
 }
 
 /**
- * The bar element itself. Render inside <header> (NavBar.jsx): absolute
- * positioning against the header pins it to the nav's bottom edge — page top,
- * mid-scroll, and pinned-sticky, everywhere the nav goes the bar follows.
+ * The bar element itself. Render inside the NAV ROW (the `h-16` container in
+ * NavBar.jsx), not directly inside <header>.
+ *
+ * WHY THE NAV ROW AND NOT THE HEADER
+ *
+ * The header is a sticky container that GROWS when the mobile menu opens: it
+ * goes from 65px (the nav row + border) to ~356px (nav row + the expanded
+ * drawer). With `bottom-0` relative to the header, the bar was pulled to the
+ * bottom of the DRAWER — measured at y=353 while the nav row ends at y=64 — so
+ * it rendered inside the open menu panel and was invisible on mobile, which is
+ * exactly what was reported.
+ *
+ * Anchoring to the nav row keeps the bar on the nav's own bottom edge in every
+ * state: menu closed, menu open, scrolled, or pinned.
+ *
+ * z-[60] is also load-bearing. The bar and the mobile drawer are siblings, and
+ * the drawer comes LATER in the DOM, so at equal z-index the drawer paints on
+ * top. The bar must sit above the drawer while still living inside the header's
+ * stacking context (the header is z-40; a child's z-index is relative to that
+ * context, which keeps the bar above page content without escaping the sticky
+ * header).
  */
 export function RouteProgressBar() {
   const { state } = useProgressReporter();
@@ -109,18 +127,26 @@ export function RouteProgressBar() {
     <div
       aria-hidden="true"
       data-state={state}
-      // `bottom-0`, NOT `top-16`.
+      // `fixed`, at the nav row's bottom edge, in the BODY's stacking context.
       //
-      // The header is 65px tall: a 64px content row plus its 1px bottom border.
-      // `top-16` pinned the bar at exactly 64px, so a 2px bar occupied 64–66 and
-      // hung 1px BELOW the header — it straddled the border instead of sitting
-      // on it, which reads as a misaligned/unven bar against the nav edge, and
-      // the extra pixel showed over the page background.
+      // WHY IT IS NOT INSIDE THE HEADER
       //
-      // Anchoring to the bottom edge makes the bar follow whatever the header
-      // height actually is (border, font scaling, a taller mobile row), so it can
-      // never drift out of alignment again.
-      className="route-progress pointer-events-none absolute inset-x-0 bottom-0 z-50 h-0.5 origin-left bg-brand-500"
+      // The header carries `backdrop-blur`, which creates its own stacking
+      // context. The mobile drawer lives inside that context as a LATER sibling
+      // of the bar, so no z-index on the bar could beat it: measured with the
+      // drawer open, the bar was absent from the hit-test stack entirely and the
+      // drawer painted over its pixels. Rendering the bar as a sibling of the
+      // header (in layout.jsx) puts it in the top-level context, where z-[60]
+      // simply wins.
+      //
+      // `fixed` (not `absolute`) is required for the same reason: it must not be
+      // positioned relative to the header, whose height GROWS to ~356px when the
+      // drawer opens. `top-16` keeps it on the nav row's edge in every state —
+      // measured y=64 with the menu closed, open, and on desktop.
+      //
+      // Full-bleed via `inset-x-0`: the header's inner row is `.container-page`
+      // (max-w-6xl + padding), which would otherwise clip the bar to 1152px.
+      className="route-progress pointer-events-none fixed inset-x-0 top-16 z-[60] h-0.5 origin-left bg-brand-500"
     />
   );
 }
