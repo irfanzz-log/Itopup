@@ -11,6 +11,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api-client";
 import { Alert, Spinner } from "@/components/ui/primitives";
+import PasswordInput from "@/components/ui/PasswordInput";
 
 const MIN_LENGTH = 8;
 
@@ -76,13 +77,14 @@ export default function SetPasswordForm({ name = "", email = "", nextPath = "/me
 
       <div>
         <label htmlFor="password" className="label">Password</label>
-        <input
-          id="password" name="password" type="password" autoComplete="new-password" required
+        <PasswordInput
+          id="password"
+          name="password"
+          autoComplete="new-password"
           value={password}
           onChange={(event) => setPassword(event.target.value)}
-          aria-invalid={Boolean(fieldError)}
-          aria-describedby="password-hint"
-          className={`field ${fieldError ? "field-error" : ""}`}
+          invalid={Boolean(fieldError)}
+          describedBy="password-hint"
           placeholder={`Minimal ${MIN_LENGTH} karakter`}
           autoFocus
         />
@@ -108,12 +110,13 @@ export default function SetPasswordForm({ name = "", email = "", nextPath = "/me
 
       <div>
         <label htmlFor="confirm" className="label">Ulangi password</label>
-        <input
-          id="confirm" name="confirm" type="password" autoComplete="new-password" required
+        <PasswordInput
+          id="confirm"
+          name="confirm"
+          autoComplete="new-password"
           value={confirm}
           onChange={(event) => setConfirm(event.target.value)}
-          aria-invalid={Boolean(showMismatch)}
-          className={`field ${showMismatch ? "field-error" : ""}`}
+          invalid={Boolean(showMismatch)}
           placeholder="Ketik ulang password"
         />
         {showMismatch ? <p className="mt-1 text-xs text-danger-fg">Konfirmasi password tidak cocok.</p> : null}

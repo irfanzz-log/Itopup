@@ -15,6 +15,7 @@ import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { apiFetch, safeNextPath } from "@/lib/api-client";
 import { Alert, Spinner } from "@/components/ui/primitives";
+import PasswordInput from "@/components/ui/PasswordInput";
 
 export default function LoginForm() {
   const searchParams = useSearchParams();
@@ -90,18 +91,14 @@ export default function LoginForm() {
         <div className="flex items-baseline justify-between">
           <label htmlFor="password" className="label">Password</label>
         </div>
-        <input
+        <PasswordInput
           id="password"
           name="password"
-          type="password"
           autoComplete="current-password"
-          required
           value={values.password}
           onChange={update("password")}
-          aria-invalid={Boolean(errors.password)}
-          aria-describedby={errors.password ? "password-error" : undefined}
-          className={`field ${errors.password ? "field-error" : ""}`}
-          placeholder="••••••••"
+          invalid={Boolean(errors.password)}
+          describedBy={errors.password ? "password-error" : undefined}
         />
         {errors.password ? (
           <p id="password-error" className="mt-1 text-xs text-danger-fg">{errors.password}</p>

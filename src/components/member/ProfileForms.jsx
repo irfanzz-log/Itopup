@@ -17,6 +17,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Alert, Spinner } from "@/components/ui/primitives";
+import PasswordInput from "@/components/ui/PasswordInput";
 import { apiFetch, apiPost } from "@/lib/api-client";
 
 export function ProfileForm({ user }) {
@@ -144,22 +145,26 @@ export function PasswordForm() {
 
       <div>
         <label htmlFor="currentPassword" className="label">Password saat ini</label>
-        <input
-          id="currentPassword" name="currentPassword" type="password" autoComplete="current-password" required
+        <PasswordInput
+          id="currentPassword"
+          name="currentPassword"
+          autoComplete="current-password"
           value={form.currentPassword}
           onChange={(e) => setForm((prev) => ({ ...prev, currentPassword: e.target.value }))}
-          className={`field ${state.errors.currentPassword ? "field-error" : ""}`}
+          invalid={Boolean(state.errors.currentPassword)}
         />
         {state.errors.currentPassword ? <p className="mt-1 text-xs font-medium text-danger-fg">{state.errors.currentPassword}</p> : null}
       </div>
 
       <div>
         <label htmlFor="newPassword" className="label">Password baru</label>
-        <input
-          id="newPassword" name="newPassword" type="password" autoComplete="new-password" required
+        <PasswordInput
+          id="newPassword"
+          name="newPassword"
+          autoComplete="new-password"
           value={form.newPassword}
           onChange={(e) => setForm((prev) => ({ ...prev, newPassword: e.target.value }))}
-          className={`field ${state.errors.newPassword ? "field-error" : ""}`}
+          invalid={Boolean(state.errors.newPassword)}
         />
         <p className="hint">Minimal 8 karakter, mengandung huruf besar, huruf kecil, dan angka.</p>
         {state.errors.newPassword ? <p className="mt-1 text-xs font-medium text-danger-fg">{state.errors.newPassword}</p> : null}
@@ -167,11 +172,13 @@ export function PasswordForm() {
 
       <div>
         <label htmlFor="confirm" className="label">Ulangi password baru</label>
-        <input
-          id="confirm" name="confirm" type="password" autoComplete="new-password" required
+        <PasswordInput
+          id="confirm"
+          name="confirm"
+          autoComplete="new-password"
           value={form.confirm}
           onChange={(e) => setForm((prev) => ({ ...prev, confirm: e.target.value }))}
-          className={`field ${state.errors.confirm ? "field-error" : ""}`}
+          invalid={Boolean(state.errors.confirm)}
         />
         {state.errors.confirm ? <p className="mt-1 text-xs font-medium text-danger-fg">{state.errors.confirm}</p> : null}
       </div>

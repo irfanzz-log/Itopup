@@ -15,6 +15,7 @@ import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { apiFetch, safeNextPath } from "@/lib/api-client";
 import { Alert, Spinner } from "@/components/ui/primitives";
+import PasswordInput from "@/components/ui/PasswordInput";
 
 const MIN_LENGTH = 8;
 
@@ -253,12 +254,14 @@ export default function RegisterForm() {
 
       <div>
         <label htmlFor="password" className="label">Password</label>
-        <input
-          id="password" name="password" type="password" autoComplete="new-password" required
-          value={values.password} onChange={update("password")}
-          aria-invalid={Boolean(errors.password)}
-          aria-describedby="password-hint"
-          className={`field ${errors.password ? "field-error" : ""}`}
+        <PasswordInput
+          id="password"
+          name="password"
+          autoComplete="new-password"
+          value={values.password}
+          onChange={update("password")}
+          invalid={Boolean(errors.password)}
+          describedBy="password-hint"
           placeholder={`Minimal ${MIN_LENGTH} karakter`}
         />
         {errors.password ? (
