@@ -48,8 +48,19 @@ export default function Logo({ href = "/", size = "md", showWordmark = true, cla
         {MARK_SVG}
       </span>
       {showWordmark ? (
+        // The wordmark splits the brand into ITOP + UP, not ITO + PUP.
+        //
+        // The blue used to cover "PUP", which is the wrong thing to highlight:
+        // read on its own the accented fragment spells an unfortunate word, and
+        // the accent is the first thing a reader's eye lands on. Highlighting
+        // "UP" keeps the top-up meaning and leaves the rest of the name in the
+        // text colour, which is also the honest reading of the mark, "ITOP" +
+        // "UP".
+        //
+        // No whitespace between the spans: a newline here becomes a space, and
+        // a space inside a wordmark is a visible gap at large sizes.
         <span className={`${text} font-extrabold tracking-tight text-foreground`}>
-          ITO<span className="text-brand-600 dark:text-brand-400">PUP</span>
+          ITOP<span className="text-brand-600 dark:text-brand-400">UP</span>
         </span>
       ) : null}
       <NavProbe />
