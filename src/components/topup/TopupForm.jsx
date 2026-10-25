@@ -17,6 +17,7 @@ import { Alert, Badge, Spinner } from "@/components/ui/primitives";
 import StepIndicator from "@/components/ui/StepIndicator";
 import { apiPost, apiGet } from "@/lib/api-client";
 import { deriveIdempotencyKey } from "@/lib/checkout-key";
+import { isUnauthorized, checkoutReturnPath, loginUrlFor } from "@/lib/checkout-session";
 import { isSecretField, secretFieldKeys, normalisePhoneId, phoneErrorMessage } from "@/config/input-fields";
 import { phoneMatchesOperator, OPERATOR_DISPLAY_NAME } from "@/config/operators";
 import { formatIDR, formatNumber, variantLabel } from "@/lib/format";
@@ -24,8 +25,18 @@ import { filterMethodsForPurchase } from "@/config/payment";
 import { paymentIcon, walletIcon } from "@/config/payment-icons.js";
 import MyVouchers from "@/components/topup/MyVouchers.jsx";
 
-/** Draft persisted across a login redirect so the customer does not lose input. */
-const draftKey = (slug) => `itp:topup-draft:${slug}`;
+/**
+ * Draft persisted across a login redirect so the customer does not lose input.
+ *
+ * The key includes the PRODUCT, not just the game, because pulsa is a single
+ * Game whose operators are products: keying on `game.slug` alone gave every
+ * operator the same `itp:topup-draft:pulsa` slot, so a draft saved while buying
+ * Telkomsel would be restored on the XL page (and the variant id would then be
+ * rejected as unavailable). A game page's products are tabs, and scoping the
+ * draft per tab is equally correct there: switching tab is switching purchase.
+ */
+const draftKey = (slug, productSlug = null) =>
+  `itp:topup-draft:${slug}${productSlug ? `:${productSlug}` : ""}`;
 
 /**
  * Server-resolved promo prices for every nominal on this page. Populated once
@@ -36,6 +47,14 @@ const initialPriceCache = new Map();
 
 export default function TopupForm({ game, products, paymentMethods, initialPrices = {} }) {
   const router = useRouter();
+
+  // Which draft slot this PAGE owns. A pulsa page renders exactly one operator
+  // (see /topup/pulsa/[operator]), so its slug is part of the identity; a game
+  // page owns one slot for the whole game because its products are tabs on the
+  // same purchase. Derived from props, never from the selected product, so the
+  // key is the same before and after a restore.
+  const draftScope = game.categoryKind === "PULSA" ? products[0]?.slug ?? null : null;
+  const draftId = draftKey(game.slug, draftScope);
 
   const [productId, setProductId] = useState(products[0]?.id ?? null);
   const [variantId, setVariantId] = useState(null);
@@ -64,6 +83,14 @@ export default function TopupForm({ game, products, paymentMethods, initialPrice
   const [validation, setValidation] = useState({ state: "idle", data: null, error: null });
   const [checking, setChecking] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  // True between "we know the visitor must sign in" and the browser leaving the
+  // page. It only exists to keep the button from being pressed twice while the
+  // navigation is in flight.
+  const [redirecting, setRedirecting] = useState(false);
+  // Set when the customer arrives back from /login with a restored draft, so
+  // the form can say "your selection is still here" instead of looking
+  // inexplicably pre-filled.
+  const [resumeNotice, setResumeNotice] = useState(false);
   const [formError, setFormError] = useState(null);
   const [fieldErrors, setFieldErrors] = useState({});
   // Opt-in to storing the game login the customer just typed. Off by default:
@@ -132,7 +159,7 @@ export default function TopupForm({ game, products, paymentMethods, initialPrice
   // ── Restore a draft saved before a login redirect ────────────────────────
   useEffect(() => {
     try {
-      const raw = sessionStorage.getItem(draftKey(game.slug));
+      const raw = sessionStorage.getItem(draftId);
       if (!raw) return;
       const draft = JSON.parse(raw);
       if (draft?.variantId) setVariantId(draft.variantId);
@@ -140,10 +167,42 @@ export default function TopupForm({ game, products, paymentMethods, initialPrice
       if (draft?.fields) setFields((prev) => ({ ...prev, ...draft.fields }));
       if (draft?.promoCode) setPromoCode(draft.promoCode);
       if (draft?.paymentMethod) setPaymentMethod(draft.paymentMethod);
+      if (draft?.selectedClaimId) setSelectedClaimId(draft.selectedClaimId);
+      // A draft written by ensureSignedIn carries this flag. It is consumed
+      // here and cleared, so the notice appears exactly once, on the trip back
+      // from /login, and not on every later visit to this game page.
+      if (draft?.resumeAfterLogin) {
+        setResumeNotice(true);
+        draft.resumeAfterLogin = false;
+        sessionStorage.setItem(draftId, JSON.stringify(draft));
+      }
     } catch {
       // A corrupt draft is not worth surfacing, start clean.
     }
-  }, [game.slug]);
+  }, [draftId]);
+
+  // ── Is there a session? ──────────────────────────────────────────────────
+  //
+  // Asked ONCE on mount, so the rail can tell a guest up front that this
+  // purchase needs an account. It is only a hint: the authoritative answer is
+  // taken again at submit time (see ensureSignedIn), because a session can
+  // expire while the customer is picking a nominal, and a mount-time flag that
+  // said "member" would then send them into a 401 with their work unsaved.
+  //
+  // `unknown` is a real state, not a placeholder: a network failure must not be
+  // read as "guest", which would bounce a signed-in customer to /login.
+  const [session, setSession] = useState("unknown");
+  useEffect(() => {
+    let cancelled = false;
+    apiGet("/api/auth/me").then((result) => {
+      if (cancelled) return;
+      if (result.ok) setSession("member");
+      else if (isUnauthorized(result)) setSession("guest");
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // A restored draft can point at a variant that went out of stock while the
   // customer was away, the grid no longer shows it, so a restored selection
@@ -157,7 +216,7 @@ export default function TopupForm({ game, products, paymentMethods, initialPrice
     if (!stillAvailable) setVariantId(null);
   }, [variantId, product?.variants]);
 
-  const saveDraft = useCallback(() => {
+  const saveDraft = useCallback(({ resumeAfterLogin = false } = {}) => {
     try {
       const secretKeys = new Set(secretFieldKeys(game.inputFields));
       const safeFields = {};
@@ -165,13 +224,23 @@ export default function TopupForm({ game, products, paymentMethods, initialPrice
         if (!secretKeys.has(k)) safeFields[k] = v;
       }
       sessionStorage.setItem(
-        draftKey(game.slug),
-        JSON.stringify({ productId, variantId, fields: safeFields, promoCode, paymentMethod })
+        draftId,
+        JSON.stringify({
+          productId,
+          variantId,
+          fields: safeFields,
+          promoCode,
+          paymentMethod,
+          selectedClaimId,
+          // Only set on the sign-in redirect: it tells the returning form to
+          // announce that the selection was kept.
+          resumeAfterLogin,
+        })
       );
     } catch {
       // Private mode / quota: the flow still works, it just will not resume.
     }
-  }, [game.slug, productId, variantId, fields, promoCode, paymentMethod]);
+  }, [draftId, game.inputFields, productId, variantId, fields, promoCode, paymentMethod, selectedClaimId]);
 
   // ── Checkout preview: what the customer will actually pay ──────────────
   // Re-run on every input that changes the price: the nominal (each sits in its
@@ -201,11 +270,11 @@ export default function TopupForm({ game, products, paymentMethods, initialPrice
 
   const clearDraft = useCallback(() => {
     try {
-      sessionStorage.removeItem(draftKey(game.slug));
+      sessionStorage.removeItem(draftId);
     } catch {
       /* ignore */
     }
-  }, [game.slug]);
+  }, [draftId]);
 
   // The account is verified as part of "Lanjut ke Pembayaran", so this form never
   // sits on a "pembayaran" step, creating the order navigates to the order page.
@@ -277,9 +346,58 @@ export default function TopupForm({ game, products, paymentMethods, initialPrice
 
   // ── Checkout ─────────────────────────────────────────────────────────────
   /**
-   * "Lanjut ke Pembayaran", validate, verify the account, then create the order.
+   * Where the customer lands after signing in: this page, with its selection.
+   * See checkoutReturnPath — the pulsa operator lives in the PATH, and the game
+   * path must not carry a product tab.
+   */
+  function returnPath() {
+    return checkoutReturnPath(game, product);
+  }
+
+  /**
+   * Confirm there is a session, or send the visitor to /login and come back.
+   *
+   * WHY THIS RUNS BEFORE ANY OTHER CHECK: a guest who fills the whole form and
+   * presses "Lanjut ke Pembayaran" used to stay on this page and read
+   * "Silakan masuk terlebih dahulu" with no way forward except finding the
+   * header link. The account check and the order POST cannot succeed without a
+   * session, so spending a provider validation call first is pure waste.
+   *
+   * The draft is written BEFORE navigating. The redirect is a real page load,
+   * so anything that lives only in React state is gone by the time /login
+   * renders; sessionStorage is what makes the return trip land the customer
+   * back on their nominal, their account fields and their voucher.
+   *
+   * @returns {Promise<boolean>} true when the caller may continue.
+   */
+  async function ensureSignedIn() {
+    const me = await apiGet("/api/auth/me");
+    if (me.ok) {
+      setSession("member");
+      return true;
+    }
+
+    // A probe that failed for any other reason (network, 5xx) is NOT proof of a
+    // guest. Guessing here would bounce a signed-in customer to /login mid
+    // purchase, so the order call is left to decide; it is the authority.
+    if (!isUnauthorized(me)) return true;
+
+    // Written only on the way out, and with the resume flag set: a draft saved
+    // for a member who then completes the purchase would otherwise leave a
+    // "we kept your selection" notice behind for the next visit.
+    saveDraft({ resumeAfterLogin: true });
+    setSession("guest");
+    setRedirecting(true);
+    router.push(loginUrlFor(returnPath()));
+    return false;
+  }
+
+  /**
+   * "Lanjut ke Pembayaran", sign-in gate, validate, verify the account, then
+   * create the order.
    *
    * ORDER OF OPERATIONS IS THE POINT:
+   *   0. is there a session? if not, go to /login and come back here,
    *   1. local field check (instant, no network),
    *   2. server-side account verification, the account details are shown HERE,
    *      and an account that does not exist stops the flow with the id/zone
@@ -290,7 +408,12 @@ export default function TopupForm({ game, products, paymentMethods, initialPrice
    * so the account the customer pays for is always the account that was checked.
    */
   async function handleCheckout() {
-    if (submitting || checking) return;
+    if (submitting || checking || redirecting) return;
+
+    // ── 0. Sign-in gate ────────────────────────────────────────────────────
+    // Redirects to /login?next=<this page> for a guest. Everything typed so far
+    // is already in the draft, so the return trip restores it.
+    if (!(await ensureSignedIn())) return;
 
     // ── 1. Local field check ───────────────────────────────────────────────
     const localErrors = validateLocally(game.inputFields, fields, product?.slug);
@@ -370,17 +493,15 @@ export default function TopupForm({ game, products, paymentMethods, initialPrice
 
     setSubmitting(false);
 
-    // Not signed in: the draft is already saved, so send them to login and come
-    // straight back to this page with the selection intact.
-    if (result.status === 401) {
-      // Pulsa operators live at /topup/pulsa/[operator], not /topup/pulsa/pulsa.
-      // product.slug is the operator's slug on pulsa pages (single-product
-      // pages); for game pages it is irrelevant.
-      const back =
-        game.categoryKind === "PULSA" && product?.slug
-          ? `/topup/pulsa/${product.slug}`
-          : `/topup/${categorySegment(game)}/${game.slug}`;
-      router.push(`/login?next=${encodeURIComponent(back)}`);
+    // Not signed in after all: the session expired between the probe and the
+    // POST, or the probe could not be made. The draft is already saved, so send
+    // them to login and come straight back to this page with the selection
+    // intact. This is the same path ensureSignedIn takes, kept as a second line
+    // of defence rather than an assertion that the first one always fires.
+    if (isUnauthorized(result)) {
+      setSession("guest");
+      setRedirecting(true);
+      router.push(loginUrlFor(returnPath()));
       return;
     }
 
@@ -392,7 +513,7 @@ export default function TopupForm({ game, products, paymentMethods, initialPrice
     }
   }
 
-  const disabled = !variant || !paymentMethod || submitting || checking;
+  const disabled = !variant || !paymentMethod || submitting || checking || redirecting;
   const canValidate = game.supportsValidation && game.inputFields.length > 0;
 
   // A game whose contract declares a credential field is a "login game": the
@@ -404,6 +525,18 @@ export default function TopupForm({ game, products, paymentMethods, initialPrice
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
       <div className="space-y-5">
         <StepIndicator current={step} hrefs={{ produk: `/topup/${categorySegment(game)}/${game.slug}` }} />
+
+        {/* Arrived back from /login with the draft restored. Without this the
+            form is simply pre-filled, which reads as a bug ("why is my id
+            already here?") rather than as continuity. */}
+        {resumeNotice ? (
+          <Alert tone="success" title="Pesanan Anda dilanjutkan">
+            <p>
+              Pilihan nominal, data akun, dan metode pembayaran Anda masih tersimpan.
+              Periksa kembali lalu tekan “Lanjut ke Pembayaran”.
+            </p>
+          </Alert>
+        ) : null}
 
         {/* ── Step 1: product type + nominal ─────────────────────────────── */}
         <section className="card p-5">
@@ -765,14 +898,36 @@ export default function TopupForm({ game, products, paymentMethods, initialPrice
             </div>
           ) : null}
 
+          {/* A guest is told BEFORE they fill the form what pressing the button
+              will do. The button itself stays enabled: disabling it would leave
+              the customer hunting for a reason, and the redirect is the help. */}
+          {session === "guest" ? (
+            <div className="mt-4">
+              <Alert tone="info" title="Perlu masuk dulu">
+                <p>
+                  Pesanan Anda disimpan otomatis. Setelah masuk, Anda kembali ke halaman
+                  ini dengan pilihan yang sama.
+                </p>
+              </Alert>
+            </div>
+          ) : null}
+
           <button
             type="button"
             onClick={handleCheckout}
             disabled={disabled}
             className="btn-primary mt-4 w-full"
           >
-            {submitting || checking ? <Spinner /> : null}
-            {checking ? "Memeriksa akun…" : submitting ? "Memproses…" : "Lanjut ke Pembayaran"}
+            {submitting || checking || redirecting ? <Spinner /> : null}
+            {redirecting
+              ? "Mengalihkan ke halaman masuk…"
+              : checking
+                ? "Memeriksa akun…"
+                : submitting
+                  ? "Memproses…"
+                  : session === "guest"
+                    ? "Masuk & Lanjut ke Pembayaran"
+                    : "Lanjut ke Pembayaran"}
           </button>
 
           {!variant ? (

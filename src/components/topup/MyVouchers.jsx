@@ -59,7 +59,10 @@ export default function MyVouchers({ selectedClaimId, onSelect, onCodeResolved }
     const result = await apiGet("/api/vouchers");
     if (!result.ok) {
       // A logged-out customer has no wallet; that is not an error worth showing.
-      if (result.error?.code === "ITP_UNAUTHORIZED" || result.status === 401) {
+      // The status is read off `error` because that is where apiFetch puts it
+      // (see isUnauthorized in TopupForm for the same trap).
+      const status = result.error?.status ?? result.status;
+      if (result.error?.code === "ITP_UNAUTHORIZED" || status === 401) {
         setState("ready");
         setMine([]);
         setClaimable([]);
