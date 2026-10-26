@@ -44,6 +44,8 @@ import { availablePaymentMethods } from "@/config/payment.server";
 import { CATEGORY_KIND_PATH } from "@/lib/constants";
 import JsonLd from "@/components/seo/JsonLd";
 import { productJsonLd } from "@/lib/json-ld.js";
+import { productImageUrls, meetsImageRecommendation } from "@/lib/structured-data-assets.js";
+import { localImageCandidates } from "@/config/icons.server.js";
 import { buildOperatorDescription } from "@/lib/seo-meta.js";
 
 export const dynamic = "force-dynamic";
@@ -145,13 +147,45 @@ export default async function OperatorTopupPage({ params, searchParams }) {
     ])
   );
 
+  // ── Artwork and description for the Product node ─────────────────────────
+  //
+  // The operator's brand mark is the product image here: the operator IS the
+  // product on a pulsa page. The checked-in telco logos are 160×160, under
+  // Google's 50K-pixel RECOMMENDATION but still the only real artwork these
+  // pages have — so they are emitted, and the shortfall is logged once per
+  // request instead of being found in Search Console later. (No image at all
+  // would be a critical error; a small one is merely sub-optimal.)
+  const operatorIcon = productIcon({ gameSlug: game.slug, productSlug: product.slug });
+  const imageCandidates = localImageCandidates([operatorIcon].filter(Boolean));
+  const images = productImageUrls(imageCandidates);
+  if (images.length > 0 && !meetsImageRecommendation(imageCandidates)) {
+    console.warn("structured-data.image_below_recommendation", {
+      operator: product.slug,
+      image: images[0],
+    });
+  }
+
+  // The description Search Console reported as missing. `product.description`
+  // is empty for every operator in the catalogue, so the generated one — which
+  // names this operator and its real starting price — is what fills the gap.
+  const schemaDescription =
+    buildOperatorDescription({
+      operatorName: product.name,
+      description: product.description,
+      minPrice: (product.variants ?? [])
+        .map((variant) => variant.sellingPrice)
+        .filter((price) => Number.isFinite(price))
+        .reduce((min, price) => (min === null || price < min ? price : min), null),
+    }) ?? undefined;
+
   return (
     <div className="container-page py-8 sm:py-10">
       <JsonLd
         data={productJsonLd({
           name: `Top Up ${product.name}`,
-          description: product.description || undefined,
+          description: schemaDescription,
           path: `/topup/pulsa/${product.slug}`,
+          images,
           breadcrumbTrail: [
             { name: "Beranda", path: "/" },
             { name: "Top Up", path: "/topup" },

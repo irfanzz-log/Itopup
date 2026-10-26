@@ -20,6 +20,9 @@ import { availablePaymentMethods } from "@/config/payment.server";
 import { CATEGORY_KIND_LABEL, CATEGORY_KIND_PATH } from "@/lib/constants";
 import JsonLd from "@/components/seo/JsonLd";
 import { productJsonLd } from "@/lib/json-ld.js";
+import { productImageUrls } from "@/lib/structured-data-assets.js";
+import { localImageCandidates } from "@/config/icons.server.js";
+import { gameIcon } from "@/config/icons.js";
 import { buildGameTitle, buildGameDescription } from "@/lib/seo-meta.js";
 
 export const dynamic = "force-dynamic";
@@ -128,13 +131,46 @@ export default async function GameTopupPage({ params }) {
     ])
   );
 
+  // ── Artwork for the Product node ─────────────────────────────────────────
+  //
+  // `image` is the one CRITICAL field in a merchant listing (Search Console:
+  // "Kolom image tidak ada"), so it cannot be left to chance. The candidates
+  // are the game's own icon (an operator can override it with a stored `logo`)
+  // and its banner when one exists, and `productImageUrls` drops anything under
+  // Google's 50K-pixel recommendation or in a vector format. Reading the sizes
+  // needs the filesystem, which is why this happens here in the server
+  // component rather than inside the pure builder.
+  const artworkPaths = [
+    game.logo ?? gameIcon(game.slug),
+    game.banner,
+  ].filter((value) => typeof value === "string" && value.length > 0);
+  const images = productImageUrls(localImageCandidates(artworkPaths));
+
+  // The description Search Console reported as missing. `game.description` is
+  // populated for every active game today, but the fallback keeps the node
+  // complete if a new game is added before its copy is written — and it is
+  // built from this page's own products and price, so it stays true.
+  const minPrice = products
+    .flatMap((product) => (product.variants ?? []).map((variant) => variant.sellingPrice))
+    .filter((price) => Number.isFinite(price))
+    .reduce((min, price) => (min === null || price < min ? price : min), null);
+  const schemaDescription =
+    buildGameDescription({
+      gameName: game.name,
+      description: game.description,
+      productNames: products.map((product) => product.name),
+      minPrice,
+      kind,
+    }) ?? undefined;
+
   return (
     <div className="container-page py-8 sm:py-10">
       <JsonLd
         data={productJsonLd({
           name: `Top Up ${game.name}`,
-          description: game.description || undefined,
+          description: schemaDescription,
           path: `/topup/${canonicalCategory}/${game.slug}`,
+          images,
           breadcrumbTrail: [
             { name: "Beranda", path: "/" },
             { name: "Top Up", path: "/topup" },

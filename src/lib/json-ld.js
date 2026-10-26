@@ -13,6 +13,7 @@
 // reports as a duplicate.
 // ============================================================================
 import { absoluteUrl } from "@/lib/site-url.js";
+import { merchantReturnPolicy, shippingDetails } from "@/lib/structured-data-assets.js";
 
 /**
  * Organisation + WebSite, for the homepage only.
@@ -83,8 +84,33 @@ export function breadcrumbJsonLd(trail = []) {
  * No `availability` is claimed when stock is untracked (the common case):
  * schema.org's default is InStock and asserting it for a provider-supplied
  * item we do not control would be a guess.
+ *
+ * ── THE FOUR SEARCH CONSOLE FINDINGS THIS CLOSES ──────────────────────────
+ *
+ * `image` is REQUIRED for a merchant listing; without it Search Console reports
+ * a critical error and the page cannot appear at all. It is supplied by the
+ * caller as `images` (already resolved and filtered by productImageUrls) so
+ * this builder stays pure and free of filesystem access.
+ *
+ * `hasMerchantReturnPolicy` and `shippingDetails` are optional in the
+ * vocabulary but reported for every merchant listing that omits them, and they
+ * are the two facts a shopper buying a digital good needs. Both come from
+ * structured-data-assets.js, which states ITOPUP's real policy rather than a
+ * plausible one.
+ *
+ * `description` was missing on every pulsa operator page because
+ * `product.description` is empty in the catalogue. The callers now fall back to
+ * a generated description; this builder still omits the key when it has
+ * nothing true to say, because an empty string is worse than absence.
  */
-export function productJsonLd({ name, description = "", path, breadcrumbTrail = [], offers = [] }) {
+export function productJsonLd({
+  name,
+  description = "",
+  path,
+  breadcrumbTrail = [],
+  offers = [],
+  images = [],
+}) {
   if (!name || !path) return null;
 
   const validOffers = offers.filter(
@@ -98,6 +124,13 @@ export function productJsonLd({ name, description = "", path, breadcrumbTrail = 
     url: absoluteUrl(path),
     brand: { "@type": "Brand", name },
   };
+
+  // One URL or an array — schema.org accepts both, and Google prefers several
+  // (it asks for 16x9, 4x3 and 1x1 where the merchant has them). An array of
+  // one is emitted as a plain string so the markup stays readable.
+  const imageUrls = (images ?? []).filter((url) => typeof url === "string" && url.length > 0);
+  if (imageUrls.length === 1) node.image = imageUrls[0];
+  else if (imageUrls.length > 1) node.image = imageUrls;
 
   if (validOffers.length > 0) {
     const lowest = validOffers.reduce((min, offer) => (offer.price < min ? offer.price : min), validOffers[0].price);
@@ -115,6 +148,10 @@ export function productJsonLd({ name, description = "", path, breadcrumbTrail = 
       ...(validOffers.some((o) => o.availability === "https://schema.org/InStock")
         ? { availability: "https://schema.org/InStock" }
         : {}),
+      // The two properties Search Console reported as missing. Both describe
+      // THIS business, not this page: see structured-data-assets.js.
+      hasMerchantReturnPolicy: merchantReturnPolicy(),
+      shippingDetails: shippingDetails(),
     };
   }
 
