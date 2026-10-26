@@ -618,18 +618,49 @@ export async function repriceCatalogue({ dryRun = false, kind = null, actor = nu
   }).length;
 
   if (!dryRun && updates.length > 0) {
-    // One transaction: a half-repriced catalogue is worse than an old one,
-    // because some customers would pay the new markup and some the old.
-    await prisma.$transaction(
-      updates.map((u) =>
-        prisma.productVariant.update({
-          where: { id: u.id },
-          data: { sellingPrice: u.sellingPrice, pricingRule: u.pricingRule },
-          select: { id: true },
-        })
-      ),
-      { timeout: 60_000, maxWait: 10_000 }
-    );
+    // ONE STATEMENT, NOT 600.
+    //
+    // This used to be `prisma.$transaction(updates.map(update))`: 600 sequential
+    // UPDATEs over a pooled connection to a remote Postgres. Measured on the
+    // production database at 92ms per statement, that is ~55s — past the 60s
+    // transaction budget and well past any serverless request timeout, so
+    // "Terapkan harga baru" failed every time while the dry run (read-only, no
+    // transaction) succeeded. The dry run working and the apply failing was the
+    // tell.
+    //
+    // A single `UPDATE ... FROM (VALUES ...)` does the same work in one round
+    // trip, so the whole reprice is atomic AND fast enough to finish inside a
+    // request.
+    //
+    // The ids and numbers are inlined only after being validated: an id must
+    // match the UUID shape and a price must be a positive integer. Anything
+    // else would be SQL injection through a database value, so it is refused
+    // rather than escaped — the values are derived from our own rows, and a
+    // value that does not look like one means something upstream is broken.
+    //
+    // NOTE the casts: `id` is TEXT in this schema (Prisma's @default(uuid())
+    // generates the value, it does not make the column a uuid type), so casting
+    // it to ::uuid fails with "operator does not exist: text = uuid".
+    const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const tuples = updates.map((u) => {
+      const price = Number(u.sellingPrice);
+      const rule = String(u.pricingRule ?? "");
+      if (!UUID.test(u.id)) throw new Error(`reprice: id nominal tidak valid: ${u.id}`);
+      if (!Number.isInteger(price) || price <= 0) throw new Error(`reprice: harga tidak valid: ${price}`);
+      if (!/^[a-z0-9:.]+$/i.test(rule)) throw new Error(`reprice: aturan tidak valid: ${rule}`);
+      return `('${u.id}'::text, ${price}::int, '${rule}'::text)`;
+    });
+
+    await prisma.$executeRawUnsafe(`
+      UPDATE "product_variants" AS v
+         SET "sellingPrice" = d."sellingPrice",
+             "pricingRule"  = d."pricingRule",
+             "updatedAt"    = NOW()
+        FROM (VALUES
+        ${tuples.join(",\n        ")}
+        ) AS d(id, "sellingPrice", "pricingRule")
+       WHERE v.id = d.id
+    `);
 
     await writeSyncAudit({
       actor,
