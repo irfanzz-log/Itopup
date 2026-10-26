@@ -396,7 +396,25 @@ export async function getGameDetail(slug, { includeInactive = false } = {}) {
 export async function getSellableVariant(variantId) {
   const variant = await prisma.productVariant.findUnique({
     where: { id: variantId },
-    include: {
+    // NAME THE SCALARS. This used to be `include:` only, which makes Prisma
+    // emit an explicit list of EVERY column on ProductVariant. When a migration
+    // had not run yet, selecting the new column was a hard error and
+    // /api/topup/price answered 500 — checkout's price preview was dead while
+    // every page still rendered, so the outage was invisible from the outside.
+    // Listing what the checkout actually reads means a future column cannot
+    // take the money path down with it.
+    select: {
+      id: true,
+      productId: true,
+      name: true,
+      slug: true,
+      denomination: true,
+      unit: true,
+      costPrice: true,
+      sellingPrice: true,
+      isActive: true,
+      stock: true,
+      sortOrder: true,
       product: {
         select: {
           id: true, name: true, slug: true, isActive: true,
