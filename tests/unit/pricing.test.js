@@ -16,6 +16,38 @@ import {
   PULSA_MARKUP,
 } from "../../src/config/pricing.js";
 
+describe("no rounding by default", () => {
+  // The operator's instruction was "jangan di round untuk harganya", after
+  // discovering that a 1.03 -> 1.02 change produced identical prices on the
+  // page. The rounding step was the reason: Rp 1.648 × 1.02 = 1.680.96 rounds
+  // to 1.700 at a step of 100, and so does 1.03 (1.697.44 -> 1.700).
+  it("derives the exact price, to the rupiah", () => {
+    // 1648 × 1.02 = 1680.96 -> ceil -> 1681, NOT 1700.
+    expect(sellingPriceFromCost(1648, { multiplier: 1.02, flat: 0, roundTo: 1 })).toBe(1681);
+  });
+
+  it("makes a small markup change actually change the price", () => {
+    const cost = 1648;
+    const at103 = sellingPriceFromCost(cost, { multiplier: 1.03, flat: 0, roundTo: 1 });
+    const at102 = sellingPriceFromCost(cost, { multiplier: 1.02, flat: 0, roundTo: 1 });
+    expect(at103).not.toBe(at102);
+    expect(at103 - at102).toBeGreaterThan(0);
+  });
+
+  it("is what the shipped default does", () => {
+    // DEFAULT_MARKUP reads PRICING_ROUND_TO; with it unset the step must be 1.
+    // This is the assertion that would have caught the rounding hiding a
+    // markup change: at a step of 100 the two multipliers above are equal.
+    expect(DEFAULT_MARKUP.roundTo).toBe(1);
+  });
+
+  it("still never rounds DOWN into the margin", () => {
+    // Ceil, not floor/round: a fractional rupiah always goes up.
+    expect(sellingPriceFromCost(1648, { multiplier: 1.02, flat: 0, roundTo: 1 })).toBe(1681);
+    expect(sellingPriceFromCost(1000, { multiplier: 1.0005, flat: 0, roundTo: 1 })).toBe(1001);
+  });
+});
+
 describe("sellingPriceFromCost", () => {
   it("applies the configured multiplier to the provider cost", () => {
     expect(sellingPriceFromCost(10000, { multiplier: 1.04, flat: 0, roundTo: 1 })).toBe(10400);

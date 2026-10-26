@@ -23,8 +23,20 @@ export const DEFAULT_MARKUP = {
   multiplier: Number(process.env.PRICING_MARKUP_MULTIPLIER || 1.04),
   /** Added after the multiplier, in rupiah. Covers payment-gateway fees. */
   flat: Number(process.env.PRICING_MARKUP_FLAT || 0),
-  /** Round the result up to this step so prices look intentional (e.g. 500). */
-  roundTo: Number(process.env.PRICING_ROUND_TO || 100),
+  /**
+   * Rounding step for the derived price. 1 = NO rounding: the price is exactly
+   * cost × multiplier, to the rupiah.
+   *
+   * WAS 100, and that step was hiding real price changes. A markup moved from
+   * 1.03 to 1.02 changes a Rp 1.648 cost by ~Rp 16, which rounds to the same
+   * Rp 1.700 — so an operator changed the multiplier, repriced, and saw the
+   * prices stay put. With a step of 1 every change to the rule is visible on
+   * the page, which is what "jangan di-round" asks for.
+   *
+   * Still configurable: set PRICING_ROUND_TO=100 (or 500) to get the
+   * "prices look intentional" behaviour back.
+   */
+  roundTo: Number(process.env.PRICING_ROUND_TO || 1),
 };
 
 /**

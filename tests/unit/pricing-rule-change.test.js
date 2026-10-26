@@ -54,25 +54,26 @@ describe("the scenario that was reported", () => {
 
   it("would have been misread as an override by the old price comparison", () => {
     // The exact arithmetic the old guard did, kept here as documentation of the
-    // bug: stored 25200 !== derived-at-current-rule 29100, so the old check
-    // called this row "pinned" and skipped it — which is why changing the
-    // markup repriced nothing.
+    // bug: the stored price came from an OLDER rule, so it never equals a
+    // recomputation under the current one — and the old check read that
+    // difference as "an admin typed this", skipping the row. Which is why
+    // changing the markup repriced nothing.
     const stored = 25200;
     const derivedNow = sellingPriceFromCost(27900, {});
-    expect(derivedNow).toBe(29100);
-    expect(stored).not.toBe(derivedNow);
+    expect(derivedNow).not.toBe(stored);
     // ...yet the row is not an override, and isPricePinned must say so.
     expect(isPricePinned({ costPrice: 27900, sellingPrice: stored, pricingRule: "v1:0.90:0:100" }, undefined)).toBe(false);
   });
 
   it("so the new multiplier actually produces a new price", () => {
     // What the operator expects: change the markup, prices move.
-    const oldPrice = sellingPriceFromCost(27900, {});
-    // The real function reads env at module load, so assert the relationship
-    // rather than a hardcoded pair: the derived price must exceed cost and be a
-    // round-up of it.
-    expect(oldPrice).toBeGreaterThan(27900);
-    expect(oldPrice % 100).toBe(0);
+    const price = sellingPriceFromCost(27900, {});
+    // Assert the relationship, not a hardcoded pair: the real function reads
+    // env at module load. With rounding OFF (the default now) the result is
+    // exact to the rupiah, so it must NOT be a multiple of 100 — that would
+    // mean the rounding step crept back in.
+    expect(price).toBeGreaterThan(27900);
+    expect(price % 100).not.toBe(0);
   });
 });
 
