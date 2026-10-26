@@ -127,26 +127,32 @@ export function RouteProgressBar() {
     <div
       aria-hidden="true"
       data-state={state}
-      // `fixed`, at the nav row's bottom edge, in the BODY's stacking context.
+      // `absolute inset-x-0 top-16`, rendered as the LAST child of <header>.
       //
-      // WHY IT IS NOT INSIDE THE HEADER
+      // WHY NOT `fixed top-16` AT BODY LEVEL (the bug this fixes)
       //
-      // The header carries `backdrop-blur`, which creates its own stacking
-      // context. The mobile drawer lives inside that context as a LATER sibling
-      // of the bar, so no z-index on the bar could beat it: measured with the
-      // drawer open, the bar was absent from the hit-test stack entirely and the
-      // drawer painted over its pixels. Rendering the bar as a sibling of the
-      // header (in layout.jsx) puts it in the top-level context, where z-[60]
-      // simply wins.
+      // `fixed` anchors to the VIEWPORT, so `top-16` means "64px from the top
+      // of the window" — but the nav row's bottom edge is not at 64px in every
+      // state. The announcement banner renders ABOVE the sticky header, so with
+      // a banner present the header starts at y=67 and its nav row ends at
+      // y=131, while the bar stayed at y=64: it painted INSIDE THE BANNER, 67px
+      // above the navbar. Measured on a real banner: banner 0→67, nav row
+      // 67→131, bar at 64. That is the "bar does not follow the navbar at
+      // certain moments" report — the moment is "an announcement is live".
       //
-      // `fixed` (not `absolute`) is required for the same reason: it must not be
-      // positioned relative to the header, whose height GROWS to ~356px when the
-      // drawer opens. `top-16` keeps it on the nav row's edge in every state —
-      // measured y=64 with the menu closed, open, and on desktop.
+      // `absolute` inside the sticky header anchors to the header's own box, so
+      // the bar is on the nav row's bottom edge in every state: no banner
+      // (64), banner present (131), scrolled (64), mobile drawer open (64).
+      // It also moves with the sticky header for free, with no scroll listener.
       //
-      // Full-bleed via `inset-x-0`: the header's inner row is `.container-page`
-      // (max-w-6xl + padding), which would otherwise clip the bar to 1152px.
-      className="route-progress pointer-events-none fixed inset-x-0 top-16 z-[60] h-0.5 origin-left bg-brand-500"
+      // TWO PLACEMENT CONSTRAINTS, both verified by measurement:
+      //   * LAST child of <header>. The mobile drawer is an earlier sibling in
+      //     the same stacking context (the header's `backdrop-blur` creates
+      //     one), so the bar must come after it for z-[60] to win.
+      //   * `inset-x-0` against the HEADER, never `.container-page`. That
+      //     utility is max-w-6xl + padding and would clip the bar to ~1152px
+      //     instead of full-bleed; the header itself has no horizontal padding.
+      className="route-progress pointer-events-none absolute inset-x-0 top-16 z-[60] h-0.5 origin-left bg-brand-500"
     />
   );
 }

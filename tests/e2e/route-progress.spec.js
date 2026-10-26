@@ -304,3 +304,155 @@ test.describe("route progress bar on mobile", () => {
     ).toBeGreaterThan(0.6);
   });
 });
+
+// ============================================================================
+// The bar must follow the nav edge when the ANNOUNCEMENT BANNER is present.
+//
+// THE BUG THIS PINS (reported as "bar loading masih tidak mengikuti navbar di
+// moment tertentu")
+//
+// The bar was `fixed inset-x-0 top-16`, i.e. pinned 64px from the VIEWPORT. But
+// the banner renders ABOVE the sticky header, so with a banner live the header
+// starts lower and its nav row ends at ~131px while the bar stayed at 64px — it
+// painted inside the banner, 67px above the navbar. Measured on a real banner:
+// banner 0→67, nav row 67→131, bar at 64.
+//
+// WHY THE EXISTING TESTS MISSED IT: every geometry assertion in this file
+// hardcodes y=64, which is correct ONLY without a banner. A test that assumes
+// the offset cannot notice that the offset is the bug. These tests derive the
+// expected position from the nav row itself, and one of them asserts the bar is
+// NOT at 64 while a banner is present.
+//
+// The banner is injected as a real element above the header rather than by
+// writing to the database: this file must run against any environment, and the
+// layout places the banner immediately before <header>, so inserting a
+// same-height block there reproduces the exact geometry the bug depended on.
+// ============================================================================
+test.describe("route progress bar with an announcement banner", () => {
+  /** Insert a banner in the slot AnnouncementBanner occupies (before <header>). */
+  async function injectBanner(page) {
+    await page.evaluate(() => {
+      if (document.querySelector("[data-test-banner]")) return;
+      const header = document.querySelector("header");
+      const banner = document.createElement("div");
+      banner.setAttribute("data-test-banner", "");
+      banner.style.cssText =
+        "height:64px;display:flex;align-items:center;padding:0 16px;background:#1e3a8a;color:#fff";
+      banner.textContent = "Pemeliharaan terjadwal";
+      header.parentNode.insertBefore(banner, header);
+    });
+  }
+
+  /** Force the bar visible and read its settled box plus the nav row's. */
+  async function measure(page) {
+    return page.evaluate(() => {
+      const bar = document.querySelector(".route-progress");
+      const header = document.querySelector("header");
+      const row = header.querySelector(".h-16");
+      const previous = bar.getAttribute("data-state");
+      const previousTransition = bar.style.transition;
+      bar.style.transition = "none";
+      bar.setAttribute("data-state", "done");
+      void bar.offsetWidth;
+      const b = bar.getBoundingClientRect();
+      const r = row.getBoundingClientRect();
+      const out = {
+        barTop: Math.round(b.top),
+        barBottom: Math.round(b.bottom),
+        barLeft: Math.round(b.left),
+        barWidth: Math.round(b.width),
+        navRowTop: Math.round(r.top),
+        navRowBottom: Math.round(r.bottom),
+      };
+      bar.setAttribute("data-state", previous);
+      bar.style.transition = previousTransition;
+      return out;
+    });
+  }
+
+  test("stays on the nav edge when a banner pushes the header down", async ({ page }) => {
+    await page.goto("/");
+    await page.waitForLoadState("networkidle");
+
+    const without = await measure(page);
+    await injectBanner(page);
+    const withBanner = await measure(page);
+
+    // The banner really did move the nav down — otherwise this proves nothing.
+    expect(
+      withBanner.navRowBottom,
+      "the banner must actually shift the nav row for this test to mean anything"
+    ).toBeGreaterThan(without.navRowBottom + 40);
+
+    // THE ASSERTION THAT FAILS ON THE OLD BUILD: the bar is on the nav row's
+    // bottom edge, not at a fixed 64px.
+    expect(
+      Math.abs(withBanner.barTop - withBanner.navRowBottom),
+      `bar top ${withBanner.barTop} vs nav row bottom ${withBanner.navRowBottom}`
+    ).toBeLessThanOrEqual(2);
+
+    // And explicitly: it is NOT parked at the old hardcoded offset.
+    expect(withBanner.barTop, "bar must not stay at the hardcoded 64px").not.toBe(64);
+
+    // Still full-bleed while it moved.
+    expect(withBanner.barLeft).toBe(0);
+    expect(withBanner.barWidth).toBeGreaterThanOrEqual(1279);
+  });
+
+  test("paints at the banner-adjusted edge, not inside the banner", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/");
+    await page.waitForLoadState("networkidle");
+    await injectBanner(page);
+
+    const geo = await measure(page);
+    // Sample the FIXED row where the bar must now be (derived, not assumed).
+    const shot = await page.screenshot({
+      clip: { x: 0, y: geo.navRowBottom, width: 390, height: 2 },
+    });
+
+    const blueAtEdge = await page.evaluate(async (b64) => {
+      const img = new Image();
+      img.src = "data:image/png;base64," + b64;
+      await img.decode();
+      const canvas = document.createElement("canvas");
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0);
+      const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      let blue = 0;
+      for (let i = 0; i < data.length; i += 4) {
+        if (Math.abs(data[i] - 59) < 45 && Math.abs(data[i + 1] - 130) < 45 && Math.abs(data[i + 2] - 246) < 45) blue += 1;
+      }
+      return blue / (data.length / 4);
+    }, shot.toString("base64"));
+
+    expect(
+      blueAtEdge,
+      `the banner-adjusted nav edge (y=${geo.navRowBottom}) is only ${(blueAtEdge * 100).toFixed(1)}% blue`
+    ).toBeGreaterThan(0.6);
+
+    // The old position must now be empty: this is the pixel that used to be the
+    // bar and is now inside the banner.
+    const oldSpot = await page.screenshot({ clip: { x: 0, y: 64, width: 390, height: 2 } });
+    const blueAtOldSpot = await page.evaluate(async (b64) => {
+      const img = new Image();
+      img.src = "data:image/png;base64," + b64;
+      await img.decode();
+      const canvas = document.createElement("canvas");
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0);
+      const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      let blue = 0;
+      for (let i = 0; i < data.length; i += 4) {
+        if (Math.abs(data[i] - 59) < 45 && Math.abs(data[i + 1] - 130) < 45 && Math.abs(data[i + 2] - 246) < 45) blue += 1;
+      }
+      return blue / (data.length / 4);
+    }, oldSpot.toString("base64"));
+
+    expect(blueAtOldSpot, "the bar must no longer paint at the hardcoded y=64").toBeLessThan(0.2);
+  });
+});

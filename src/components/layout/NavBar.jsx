@@ -19,7 +19,7 @@ import Logo from "./Logo";
 import ThemeToggle from "@/components/theme/ThemeToggle";
 import UserMenu from "./UserMenu";
 import GuestMenu from "./GuestMenu";
-import { NavProbe } from "./RouteProgress";
+import { NavProbe, RouteProgressBar } from "./RouteProgress";
 
 export default function NavBar({ user, categories, popularGames }) {
   const pathname = usePathname();
@@ -76,6 +76,11 @@ export default function NavBar({ user, categories, popularGames }) {
 
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-surface/90 backdrop-blur supports-[backdrop-filter]:bg-surface/75">
+      {/* NO `relative` here, and none on the inner row either.
+          `sticky` already makes this header a containing block, so the bar's
+          `absolute top-16` resolves against the HEADER (full-bleed). Putting
+          `relative` on the `.container-page` row instead would anchor the bar
+          to a max-w-6xl box and clip it to ~1152px — the documented trap. */}
       <div className="container-page flex h-16 items-center justify-between gap-4">
         <Logo />
 
@@ -248,6 +253,13 @@ export default function NavBar({ user, categories, popularGames }) {
           </nav>
         </div>
       ) : null}
+
+      {/* ── Progress bar ─────────────────────────────────────────────────── */}
+      {/* LAST child, after the drawer, on purpose. The header's `backdrop-blur`
+          creates a stacking context, and the drawer is an earlier sibling in
+          it, so the bar must come after the drawer for z-[60] to paint above
+          it while the mobile menu is open. */}
+      <RouteProgressBar />
     </header>
   );
 }

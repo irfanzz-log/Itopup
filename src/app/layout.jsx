@@ -3,7 +3,7 @@ import { ThemeProvider, themeInitScript } from "@/components/theme/ThemeProvider
 import SiteHeader from "@/components/layout/SiteHeader";
 import Footer from "@/components/layout/Footer";
 import AnnouncementBanner from "@/components/layout/AnnouncementBanner";
-import RouteProgress, { RouteProgressBar } from "@/components/layout/RouteProgress";
+import RouteProgress from "@/components/layout/RouteProgress";
 import WebAnalytics from "@/components/analytics/WebAnalytics";
 import { readAnnouncement } from "@/services/announcement.service.js";
 import { SITE_URL } from "@/lib/site-url.js";
@@ -94,16 +94,13 @@ export default async function RootLayout({ children }) {
                 sees on every page. Rendered server-side so it is present in the
                 first paint and in the no-JS view. */}
             <AnnouncementBanner announcement={announcement} />
-            {/* The progress bar is rendered HERE, as a sibling of the header —
-                not inside it. The header has `backdrop-blur`, which creates its
-                own stacking context, and the mobile drawer lives inside that
-                context as a later sibling. A z-index on a child of the header
-                cannot beat the drawer, because they are in the same context and
-                the drawer comes later in the DOM (measured: the bar was absent
-                from the hit-test stack entirely while the drawer was open).
-                As a body-level sibling the bar gets the top-level context and
-                simply paints above everything. */}
-            <RouteProgressBar />
+            {/* The progress bar is rendered INSIDE <header> (see NavBar), as its
+                last child. It used to live here as a body-level sibling with
+                `fixed top-16`, which pinned it 64px from the VIEWPORT — wrong
+                whenever the announcement banner pushed the sticky header down,
+                leaving the bar inside the banner instead of on the nav edge.
+                Inside the header, `absolute top-16` follows the nav row in
+                every state and needs no scroll listener. */}
             <SiteHeader />
             <main id="main" className="flex-1">{children}</main>
             <Footer />
