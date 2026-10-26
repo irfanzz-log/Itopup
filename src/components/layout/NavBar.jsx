@@ -151,12 +151,12 @@ export default function NavBar({ user, categories, popularGames }) {
 
         {/* ── Right side ─────────────────────────────────────────────────── */}
         <div className="flex items-center gap-2">
-          <div className="hidden lg:block">
-            <ThemeToggle />
-          </div>
-          <div className="hidden sm:block lg:hidden">
-            <ThemeToggle variant="icon" />
-          </div>
+          {/* ONE theme control for every viewport. It used to be a segmented
+              control on desktop plus a separate cycling icon button on tablet,
+              which meant two different behaviours for the same preference; the
+              control is now a single button that collapses to its icon on
+              narrow screens (the label is inside the button, not a wrapper). */}
+          <ThemeToggle />
 
           {user ? (
             <UserMenu user={user} />
@@ -195,12 +195,9 @@ export default function NavBar({ user, categories, popularGames }) {
           className="max-h-[calc(100vh-4rem)] overflow-y-auto border-t border-border bg-surface lg:hidden"
         >
           <nav className="container-page py-4" aria-label="Navigasi seluler">
-            <div className="mb-4 flex items-center justify-between">
-              <span className="text-xs font-semibold uppercase tracking-wide text-foreground-subtle">
-                Tampilan
-              </span>
-              <ThemeToggle />
-            </div>
+            {/* NO second theme control here. The header's button is visible at
+                every width now, and two buttons driving one preference in the
+                same screen is exactly the duplication this change removes. */}
 
             <MobileSection title="Kategori" />
             {categories.map((category) => (

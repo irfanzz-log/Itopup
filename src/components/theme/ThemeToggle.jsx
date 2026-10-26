@@ -1,51 +1,57 @@
 "use client";
 
 // ============================================================================
-// Theme toggle.
+// Theme toggle — ONE button that flips between light and dark.
 //
-// Renders a three-way segmented control on desktop and a single cycling button
-// on mobile. The labels are explicit ("Terang"/"Gelap"/"Sistem") rather than
-// icon-only, because an icon-only theme toggle is ambiguous to a lot of users,
-// and `aria-label` alone does not help sighted ones.
+// There used to be a three-way segmented control (Terang / Gelap / Sistem).
+// "Sistem" is gone: the header now offers a single control, because a theme
+// picker with three choices in a navigation bar is a settings panel, and the
+// only decision a customer actually makes here is "dark or not dark".
+//
+// THE BUTTON SHOWS THE STATE IT IS IN, not the state it will switch to. It
+// reads "Terang" with a sun while the page is light, "Gelap" with a moon while
+// it is dark, and the icon is what a returning customer recognises at a glance.
+// `aria-pressed` carries the same fact for assistive tech.
 //
 // `mounted` guard: the resolved theme is only known after hydration, so the
-// control renders a neutral placeholder on the server. Without this, the button
-// flickers and React reports a hydration mismatch on the `aria-pressed` state.
+// control renders a neutral placeholder on the server. Without it the button
+// flickers and React reports a hydration mismatch on `aria-pressed`.
 // ============================================================================
 import { useEffect, useState } from "react";
 import { useTheme } from "./ThemeProvider";
 
-const OPTIONS = [
-  { value: "light", label: "Terang", icon: SunIcon },
-  { value: "dark", label: "Gelap", icon: MoonIcon },
-  { value: "system", label: "Sistem", icon: MonitorIcon },
-];
-
-export default function ThemeToggle({ variant = "segmented" }) {
-  const { theme, resolved, setTheme, toggle } = useTheme();
+export default function ThemeToggle({ variant = "labelled", className = "" }) {
+  const { resolved, toggle } = useTheme();
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => setMounted(true), []);
 
+  // A fixed width, not a content width: the label changes from "Terang" to
+  // "Gelap" on click, and a button that resizes under the pointer moves the
+  // thing the customer is about to click next.
   if (!mounted) {
     return (
       <div
-        className="h-9 w-[9.5rem] rounded-full border border-border bg-surface-muted"
+        className={`h-9 w-9 shrink-0 rounded-full border border-border bg-surface-muted sm:w-[5.75rem] ${className}`}
         aria-hidden="true"
       />
     );
   }
 
+  const dark = resolved === "dark";
+  const Icon = dark ? MoonIcon : SunIcon;
+  const label = dark ? "Gelap" : "Terang";
+  const nextLabel = dark ? "Terang" : "Gelap";
+
   if (variant === "icon") {
-    const next = theme === "light" ? "dark" : theme === "dark" ? "system" : "light";
-    const Icon = resolved === "dark" ? MoonIcon : SunIcon;
     return (
       <button
         type="button"
         onClick={toggle}
-        className="btn-ghost h-9 w-9 rounded-full p-0"
-        title={`Tema: ${labelFor(theme)}. Klik untuk ${labelFor(next)}`}
-        aria-label={`Tema saat ini ${labelFor(theme)}. Ganti ke ${labelFor(next)}.`}
+        aria-pressed={dark}
+        aria-label={`Mode ${label}. Ganti ke mode ${nextLabel}.`}
+        title={`Mode ${label}`}
+        className={`btn-ghost h-9 w-9 rounded-full p-0 ${className}`}
       >
         <Icon className="h-4.5 w-4.5" />
       </button>
@@ -53,39 +59,23 @@ export default function ThemeToggle({ variant = "segmented" }) {
   }
 
   return (
-    <div
-      role="group"
-      aria-label="Pilih tema tampilan"
-      className="inline-flex items-center gap-0.5 rounded-full border border-border bg-surface-muted p-0.5"
+    <button
+      type="button"
+      onClick={toggle}
+      aria-pressed={dark}
+      aria-label={`Mode ${label}. Ganti ke mode ${nextLabel}.`}
+      title={`Mode ${label}`}
+      className={[
+        "inline-flex h-9 items-center gap-1.5 rounded-full border border-border bg-surface",
+        "px-2.5 text-xs font-semibold text-foreground-muted transition-colors",
+        "hover:bg-surface-muted hover:text-foreground",
+        className,
+      ].join(" ")}
     >
-      {OPTIONS.map((option) => {
-        const active = theme === option.value;
-        const Icon = option.icon;
-        return (
-          <button
-            key={option.value}
-            type="button"
-            onClick={() => setTheme(option.value)}
-            aria-pressed={active}
-            title={`Tema ${option.label}`}
-            className={[
-              "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors",
-              active
-                ? "bg-surface text-foreground shadow-sm"
-                : "text-foreground-subtle hover:text-foreground",
-            ].join(" ")}
-          >
-            <Icon className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">{option.label}</span>
-          </button>
-        );
-      })}
-    </div>
+      <Icon className="h-4 w-4 shrink-0" />
+      <span className="hidden sm:inline">{label}</span>
+    </button>
   );
-}
-
-function labelFor(theme) {
-  return theme === "light" ? "terang" : theme === "dark" ? "gelap" : "sistem";
 }
 
 function SunIcon({ className }) {
@@ -101,15 +91,6 @@ function MoonIcon({ className }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
       <path strokeLinecap="round" strokeLinejoin="round" d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z" />
-    </svg>
-  );
-}
-
-function MonitorIcon({ className }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-      <rect x="2" y="3" width="20" height="14" rx="2" />
-      <path strokeLinecap="round" d="M8 21h8m-4-4v4" />
     </svg>
   );
 }
