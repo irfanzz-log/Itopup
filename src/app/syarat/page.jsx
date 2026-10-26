@@ -72,7 +72,12 @@ const SECTIONS = [
   {
     title: "7. Privasi & Keamanan",
     body: [
-      "Password disimpan dalam bentuk hash dan tidak pernah dapat dibaca kembali, termasuk oleh administrator ITOPUP.",
+      "Password akun ITOPUP disimpan dalam bentuk hash dan tidak pernah dapat dibaca kembali, termasuk oleh administrator ITOPUP.",
+      // The game-account credential is a DIFFERENT secret with a DIFFERENT
+      // lifecycle, and the terms used to be silent about it. Saying nothing
+      // while two services ask for a game password is the documentation half of
+      // the same contradiction the FAQ had.
+      "Untuk layanan yang mewajibkan login akun game (saat ini eFootball dan Roblox), password akun game yang Anda masukkan hanya dipakai untuk mengirim pesanan tersebut ke penyedia. Password itu tidak disimpan kecuali Anda mencentang opsi simpan login; bila disimpan, isinya dienkripsi (AES-256-GCM) dan dapat Anda hapus kapan saja dari menu Akun. Password akun game tidak pernah ditampilkan kembali, tidak masuk riwayat transaksi, dan tidak dicatat di log.",
       "Kredensial penyedia layanan dan penyedia pembayaran hanya digunakan di sisi server dan tidak pernah dikirim ke browser Anda.",
       "Data transaksi disimpan untuk keperluan operasional, dukungan pelanggan, dan kewajiban audit.",
     ],

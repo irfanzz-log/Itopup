@@ -222,8 +222,15 @@ export default async function GameTopupPage({ params }) {
             <li className="inline-flex items-center gap-1.5">
               <Dot /> Proses otomatis
             </li>
+            {/* THE CLAIM MUST MATCH THIS GAME'S OWN CONTRACT.
+                Two games (eFootball, Roblox) declare a credential field and
+                genuinely require the customer's game login + password, because
+                the provider's flow demands it. Printing "Tanpa login akun game"
+                on THOSE pages was a direct contradiction of the form sitting
+                directly below it — and, worse, it told the customer their
+                password would never be requested right before asking for it. */}
             <li className="inline-flex items-center gap-1.5">
-              <Dot /> Tanpa login akun game
+              <Dot /> {game.needsGameLogin ? "Perlu login akun game" : "Tanpa login akun game"}
             </li>
             <li className="inline-flex items-center gap-1.5">
               <Dot /> Bayar sesuai harga yang tampil

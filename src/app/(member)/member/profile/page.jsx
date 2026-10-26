@@ -81,8 +81,8 @@ export default async function ProfilePage() {
             ) : null}
 
             <p className="mt-4 text-xs text-foreground-subtle">
-              ITOPUP tidak pernah menampilkan atau meminta password Anda. Administrator hanya dapat
-              mereset password, tidak pernah melihatnya.
+              ITOPUP tidak pernah menampilkan atau meminta password akun ITOPUP Anda. Administrator
+              hanya dapat mereset password, tidak pernah melihatnya.
             </p>
           </div>
         </aside>

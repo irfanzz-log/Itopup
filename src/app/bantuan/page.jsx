@@ -48,7 +48,11 @@ const FAQ = [
   },
   {
     q: "Apakah saya perlu akun game untuk top up?",
-    a: "Tidak. ITOPUP hanya membutuhkan User ID / Player ID yang tampil di profil akun game Anda. Kami tidak pernah meminta password akun game.",
+    // "misalnya", not an exhaustive list: which services need a game login is
+    // catalogue data (Game.needsGameLogin), and this page is deliberately
+    // static. Naming examples keeps the answer true as the catalogue grows;
+    // the per-game page states the requirement for THAT game from the database.
+    a: "Tergantung layanannya. Sebagian besar game hanya membutuhkan User ID / Zone ID atau Player ID yang tampil di profil akun game Anda, dan tidak pernah meminta password. Untuk beberapa layanan tertentu (misalnya eFootball dan Roblox), penyedia mewajibkan login akun game Anda agar pesanan bisa diproses, jadi form akan meminta email/ID login dan password akun game. Halaman produk selalu menyebutkan kebutuhannya sebelum Anda mengisi form. Password akun game yang Anda masukkan hanya dipakai untuk mengirim pesanan tersebut: tidak disimpan kecuali Anda mencentang “Simpan login”, disimpan terenkripsi (bukan teks biasa) bila dicentang, dan bisa dihapus kapan saja dari menu Akun. Password akun ITOPUP Anda sendiri selalu disimpan sebagai hash dan tidak pernah dapat dibaca kembali.",
   },
   {
     q: "Metode pembayaran apa saja yang tersedia?",

@@ -54,8 +54,11 @@ const ADVANTAGES = [
     icon: "M12 2v20m5-16H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6",
   },
   {
-    title: "Tanpa login akun game",
-    body: "Cukup User ID dan Zone ID. Kami tidak pernah meminta password akun game Anda.",
+    // Scoped to "most services", not to the whole catalogue: two games need the
+    // customer's own game login, so a blanket "kami tidak pernah meminta
+    // password akun game" is false on their pages. See the FAQ on /bantuan.
+    title: "User ID saja, tanpa password",
+    body: "Untuk sebagian besar layanan, cukup User ID dan Zone ID — tanpa password akun game.",
     icon: "M12 15v2m-6 4h12a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2Zm10-10V7a4 4 0 0 0-8 0v4",
   },
   {

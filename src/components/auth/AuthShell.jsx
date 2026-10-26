@@ -11,7 +11,11 @@ import Logo from "@/components/layout/Logo";
 const POINTS = [
   "Proses otomatis 24 jam, termasuk di luar jam kerja.",
   "Riwayat transaksi tersimpan dan dapat dipantau kapan saja.",
-  "Kami tidak pernah meminta password akun game Anda.",
+  // Scoped deliberately: a couple of services (eFootball, Roblox) DO require the
+  // customer's own game login. A blanket "never" here would contradict the form
+  // on those pages, and telling someone their password will never be asked for
+  // is not a claim to make loosely.
+  "Sebagian besar layanan cukup User ID, tanpa password akun game.",
 ];
 
 export default function AuthShell({ title, subtitle, children, footer }) {
