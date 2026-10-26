@@ -36,7 +36,7 @@ export default function ProviderActions({ providerCode, providerName }) {
     }
 
     setReport({ action, data: response.data });
-    if (action === "sync_catalog") router.refresh();
+    if (action === "sync_catalog" || action === "reprice") router.refresh();
   }
 
   return (
@@ -71,13 +71,48 @@ export default function ProviderActions({ providerCode, providerName }) {
         </button>
         <button
           type="button"
-          className="btn-ghost"
+          className="btn-secondary"
           disabled={busy !== null}
           onClick={() => run("test")}
         >
           {busy === "test" ? <Spinner /> : null}
           Tes koneksi
         </button>
+      </div>
+
+      {/* ── Reprice from the pricing rule ────────────────────────────────
+          A separate, clearly-labelled control because it is the ONLY action
+          that applies a PRICING_MARKUP_MULTIPLIER change. "Sinkronkan katalog"
+          does not do it: a sync only reprices the SKUs it fetched, so with an
+          unchanged pricelist it changes nothing no matter how the markup
+          moved. The dry run is offered first for the same reason as above. */}
+      <div className="rounded-[var(--radius-control)] border border-border bg-surface-muted p-3">
+        <p className="text-xs font-semibold text-foreground">Hitung ulang harga dari aturan markup</p>
+        <p className="mt-1 text-xs text-foreground-muted">
+          Menghitung ulang harga jual semua varian dari harga modal memakai aturan markup yang
+          sedang aktif. Harga yang pernah Anda ubah manual tidak disentuh. Tidak perlu koneksi ke
+          provider.
+        </p>
+        <div className="mt-2 flex flex-wrap gap-2">
+          <button
+            type="button"
+            className="btn-secondary btn-sm"
+            disabled={busy !== null}
+            onClick={() => run("reprice_dry_run")}
+          >
+            {busy === "reprice_dry_run" ? <Spinner /> : null}
+            Lihat selisih (tanpa simpan)
+          </button>
+          <button
+            type="button"
+            className="btn-primary btn-sm"
+            disabled={busy !== null}
+            onClick={() => run("reprice")}
+          >
+            {busy === "reprice" ? <Spinner /> : null}
+            Terapkan harga baru
+          </button>
+        </div>
       </div>
 
       <p className="text-xs text-foreground-subtle">
@@ -114,6 +149,55 @@ function Report({ report }) {
       <Alert tone="success" title="Saldo diperbarui">
         Saldo prabayar: {formatIDR(data.balance)}
         {data.durationMs ? ` · ${data.durationMs} ms` : ""}
+      </Alert>
+    );
+  }
+
+  // reprice / reprice_dry_run
+  if (action === "reprice" || action === "reprice_dry_run") {
+    const nothing = data.changed === 0;
+    return (
+      <Alert
+        tone={nothing ? "warning" : "success"}
+        title={data.dryRun ? "Perkiraan harga baru (belum disimpan)" : "Harga diperbarui"}
+      >
+        <ul className="mt-1 space-y-0.5 text-sm">
+          <li>Varian diperiksa: {data.scanned}</li>
+          <li>Harga berubah: {data.changed}</li>
+          <li>Sudah sesuai aturan: {data.unchanged}</li>
+          <li>Dilewati (harga diubah manual): {data.skippedManual}</li>
+        </ul>
+
+        {/* Airtime is priced by a fixed rupiah spread, so it never moves with
+            the markup multiplier. Saying so prevents "unchanged" from being
+            read as a failure of the action. */}
+        {data.unchangedPulsa > 0 ? (
+          <p className="mt-1 text-xs">
+            Termasuk {data.unchangedPulsa} nominal pulsa yang memang tidak terpengaruh markup
+            persen — pulsa memakai margin tetap per nominal (PRICING_PULSA_FLAT).
+          </p>
+        ) : null}
+
+        {nothing ? (
+          <p className="mt-2 text-sm">
+            Tidak ada harga yang berubah. Kalau Anda baru mengubah markup, pastikan variabel
+            PRICING_MARKUP_MULTIPLIER sudah terpasang pada deployment ini — nilainya dibaca saat
+            proses start, jadi perlu redeploy, bukan hanya restart.
+          </p>
+        ) : null}
+
+        {data.samples?.length ? (
+          <div className="mt-2">
+            <p className="text-xs font-semibold">Contoh perubahan:</p>
+            <ul className="mt-1 space-y-0.5 font-mono text-xs">
+              {data.samples.slice(0, 8).map((row) => (
+                <li key={`${row.game}-${row.name}`}>
+                  {row.game} · {row.name}: {formatIDR(row.from)} → {formatIDR(row.to)}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
       </Alert>
     );
   }

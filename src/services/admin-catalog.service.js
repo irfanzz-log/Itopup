@@ -39,7 +39,7 @@
 import { prisma } from "../lib/db.js";
 import { AppError } from "../lib/errors.js";
 import { AUDIT } from "../lib/constants.js";
-import { sellingPriceFromCost } from "../config/pricing.js";
+import { sellingPriceFromCost, isPricePinned, pricingRuleFingerprint, MANUAL_RULE } from "../config/pricing.js";
 import { getTopupProvider } from "../providers/index.js";
 import { writeAudit } from "./audit.service.js";
 
@@ -303,7 +303,13 @@ export async function updateVariantPrice({ variantId, sellingPrice, actor, reque
 
   const updated = await prisma.productVariant.update({
     where: { id: variantId },
-    data: { sellingPrice: price },
+    data: {
+      sellingPrice: price,
+      // Record that a HUMAN chose this number. Without it the sync has no way
+      // to tell an override from a stale derivation, and the next catalogue
+      // sync would overwrite the operator's decision.
+      pricingRule: MANUAL_RULE,
+    },
     select: { id: true, name: true, costPrice: true, sellingPrice: true },
   });
 
@@ -410,8 +416,7 @@ export async function reassignVariantSku({ variantId, providerCode, actor, reque
     async (tx) => {
       // Airtime is priced with a fixed spread, not a percentage; see pricing.js.
       const kind = variant.product?.game?.category?.kind ?? undefined;
-      const isPinned =
-        Number(variant.sellingPrice) !== sellingPriceFromCost(variant.costPrice, { kind });
+      const isPinned = isPricePinned(variant, kind);
       const derived = sellingPriceFromCost(target.price, { kind });
 
       // @@unique([providerId, productVariantId]) allows ONE mapping row per
@@ -448,7 +453,10 @@ export async function reassignVariantSku({ variantId, providerCode, actor, reque
       // Cost always follows the SKU we are now buying. Selling price follows
       // only when the operator has not pinned one, the same rule as the sync.
       const variantData = { costPrice: target.price };
-      if (!isPinned) variantData.sellingPrice = derived;
+      if (!isPinned) {
+        variantData.sellingPrice = derived;
+        variantData.pricingRule = pricingRuleFingerprint(kind);
+      }
 
       const updated = await tx.productVariant.update({
         where: { id: variantId },

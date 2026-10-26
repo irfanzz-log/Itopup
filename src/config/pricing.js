@@ -43,6 +43,37 @@ export const PULSA_MARKUP = {
 };
 
 /**
+ * Marker stored in `ProductVariant.pricingRule` for a price an operator typed.
+ *
+ * Deliberately NOT a fingerprint of a rule: it records the ABSENCE of a rule,
+ * which is the one thing a price comparison cannot distinguish from "the rule
+ * changed since this row was written".
+ */
+export const MANUAL_RULE = "manual";
+
+/**
+ * Fingerprint of a pricing rule: the identity of "how this price was derived".
+ *
+ * Stored on ProductVariant.pricingRule so the sync can tell a stale derivation
+ * from an admin override. WITHOUT THIS the two are indistinguishable, because
+ * the old check compared the stored price against a recomputation under the
+ * CURRENT rule — so changing the rule made every derived row look hand-edited
+ * and the sync silently stopped repricing anything.
+ *
+ * The fingerprint must change whenever the produced NUMBER would change, and
+ * must NOT change when it would not (otherwise a cosmetic edit to the env file
+ * would reprice the whole catalogue). multiplier/flat/roundTo are exactly the
+ * inputs that decide the output, so they are the fingerprint.
+ *
+ * @param {"GAME"|"PULSA"|undefined|null} kind which regime applies
+ * @returns {string}
+ */
+export function pricingRuleFingerprint(kind) {
+  const regime = kind === "PULSA" ? PULSA_MARKUP : DEFAULT_MARKUP;
+  return `v1:${regime.multiplier}:${regime.flat}:${regime.roundTo}`;
+}
+
+/**
  * Derive a selling price from a provider cost.
  * Rounds UP (never down) so rounding can never eat into the margin.
  *
@@ -61,6 +92,53 @@ export function sellingPriceFromCost(costPrice, overrides = {}) {
 /** Margin in rupiah for one unit. Reporting only. */
 export function unitMargin(sellingPrice, costPrice) {
   return Number(sellingPrice || 0) - Number(costPrice || 0);
+}
+
+/**
+ * Has an ADMIN set this variant's price by hand?
+ *
+ * THE OLD CHECK WAS WRONG, and it is why changing PRICING_MARKUP_MULTIPLIER
+ * appeared to do nothing:
+ *
+ *   isPinned = sellingPrice !== sellingPriceFromCost(costPrice)   // current rule
+ *
+ * That compares the stored price against a recomputation under the rule in
+ * force NOW, so it answers "has the rule changed since this row was written?".
+ * The moment the multiplier changes, every derived row stops matching and is
+ * misread as a manual override — the sync then skips all of them, reports
+ * success, and reprices nothing.
+ *
+ * `ProductVariant.pricingRule` replaces the guess with a fact:
+ *   * MANUAL_RULE          → an operator typed this price; never overwrite it.
+ *   * the current rule     → derived, reprice whenever cost moves.
+ *   * any OTHER fingerprint→ derived by an older rule (the multiplier changed),
+ *                            so reprice it. This is the case the old check got
+ *                            backwards, and the whole reason this column exists.
+ *   * null                 → a row from before the column existed; the
+ *                            migration backfills these, so treat as derived.
+ *
+ * A hand edit is recorded as MANUAL_RULE at write time (updateVariantPrice), so
+ * an override survives a markup change instead of being inferred from a price
+ * comparison that a rule change invalidates.
+ *
+ * @param {{ sellingPrice: number, costPrice: number, pricingRule?: string|null }} variant
+ * @param {"GAME"|"PULSA"|undefined|null} kind
+ * @returns {boolean} true when the price must NOT be overwritten
+ */
+export function isPricePinned(variant, kind) {
+  const rule = variant?.pricingRule ?? null;
+
+  // The only definitive override marker.
+  if (rule === MANUAL_RULE) return true;
+
+  // Derived by the rule in force, or by an older one: both are repricable.
+  if (rule) return false;
+
+  // No fingerprint at all. Fall back to the old comparison so a row inserted by
+  // a code path that does not record the rule still behaves sanely: it is
+  // treated as an override only when the number does not match the current
+  // derivation.
+  return Number(variant?.sellingPrice ?? 0) !== sellingPriceFromCost(variant?.costPrice ?? 0, { kind });
 }
 
 /** Margin as a percentage of the selling price, 2dp. Reporting only. */

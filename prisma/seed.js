@@ -33,7 +33,7 @@ import bcrypt from "bcryptjs";
 
 import { CATEGORY_SEED } from "../src/config/categories.js";
 import { GAME_SEED, PRODUCT_SEED, VARIANT_SEED } from "../src/config/games.js";
-import { sellingPriceFromCost } from "../src/config/pricing.js";
+import { sellingPriceFromCost, pricingRuleFingerprint, MANUAL_RULE } from "../src/config/pricing.js";
 import { PAYMENT_METHODS } from "../src/config/payment.js";
 import { ROLES } from "../src/lib/constants.js";
 
@@ -286,6 +286,9 @@ async function main() {
               unit: product.name,
               costPrice,
               sellingPrice,
+              // Record which rule produced this price, so the sync can tell a
+              // derived price from an operator override. A seed always derives.
+              pricingRule: entry.sellingPrice ? MANUAL_RULE : pricingRuleFingerprint(kind),
               sortOrder: entry.sortOrder ?? index,
               isActive,
             },
@@ -297,6 +300,7 @@ async function main() {
               unit: product.name,
               costPrice,
               sellingPrice,
+              pricingRule: entry.sellingPrice ? MANUAL_RULE : pricingRuleFingerprint(kind),
               sortOrder: entry.sortOrder ?? index,
               // Was missing: `create` fell back to the schema default (true), so
               // a freshly seeded database sold every variant regardless of what

@@ -18,13 +18,13 @@ import { presets } from "@/lib/rate-limit.js";
 import { requireStaff } from "@/lib/auth/guards.js";
 import { AppError } from "@/lib/errors.js";
 import { z } from "zod";
-import { syncProviderCatalog } from "@/services/sync.service.js";
+import { syncProviderCatalog, repriceCatalogue } from "@/services/sync.service.js";
 import { syncBalance, providerDiagnostics } from "@/services/provider.service.js";
 import { getTopupProvider } from "@/providers/index.js";
 
 const schema = z
   .object({
-    action: z.enum(["sync_catalog", "dry_run", "sync_balance", "test"]),
+    action: z.enum(["sync_catalog", "dry_run", "sync_balance", "test", "reprice", "reprice_dry_run"]),
     category: z.string().trim().max(60).optional(),
   })
   .strict();
@@ -91,6 +91,36 @@ export const POST = route(async (req, ctx, { log }) => {
         },
         { req }
       );
+    }
+
+    // ── Re-derive selling prices from cost under the CURRENT pricing rule. ──
+    //
+    // This is the action that makes a PRICING_MARKUP_MULTIPLIER change take
+    // effect. It needs no provider call: the cost is already on every row, so
+    // it works even when Melostore is unreachable (which is exactly when an
+    // operator is most likely to be fiddling with margins).
+    //
+    // Deliberately NOT folded into sync_catalog: a sync only reprices SKUs it
+    // fetched, so it silently does nothing for a rule change over an unchanged
+    // pricelist.
+    case "reprice":
+    case "reprice_dry_run": {
+      const report = await repriceCatalogue({
+        dryRun: action === "reprice_dry_run",
+        actor,
+        request: requestCtx,
+      });
+
+      log.info("dev.provider_reprice", {
+        providerCode,
+        dryRun: report.dryRun,
+        scanned: report.scanned,
+        changed: report.changed,
+        skippedManual: report.skippedManual,
+        actorId: actor.id,
+      });
+
+      return ok(report, { req });
     }
 
     // ── Refresh the cached balance. ───────────────────────────────────────

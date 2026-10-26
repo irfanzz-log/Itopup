@@ -33,7 +33,7 @@ import { prisma } from "../lib/db.js";
 import { createLogger } from "../lib/logger.js";
 import { AppError } from "../lib/errors.js";
 import { getTopupProvider } from "../providers/index.js";
-import { sellingPriceFromCost } from "../config/pricing.js";
+import { sellingPriceFromCost, isPricePinned, pricingRuleFingerprint } from "../config/pricing.js";
 import { PROVIDER_MAPPING } from "../config/provider-mapping.js";
 import { AUDIT } from "../lib/constants.js";
 
@@ -94,7 +94,7 @@ export async function syncProviderCatalog({
       providerCode: true,
       productVariantId: true,
       productVariant: {
-        select: { id: true, costPrice: true, sellingPrice: true, isActive: true },
+        select: { id: true, costPrice: true, sellingPrice: true, isActive: true, pricingRule: true },
       },
     },
   });
@@ -404,14 +404,19 @@ function derivePrices(product, variant) {
     : undefined;
 
   const sellingPrice = sellingPriceFromCost(product.price, { kind });
-  // A variant whose selling price equals exactly the derived value is treated as
-  // "not pinned", so it keeps tracking the cost. Once an admin edits it to a
-  // different number it stops being overwritten.
-  const isPinned = Number(variant.sellingPrice) !== sellingPriceFromCost(variant.costPrice, { kind });
+  // A variant is "pinned" only when an OPERATOR set its price by hand; that is
+  // recorded in pricingRule, not inferred by comparing numbers. See
+  // isPricePinned for why the old comparison made a markup change a no-op.
+  const isPinned = isPricePinned(variant, kind);
   const sellChanged = !isPinned && Number(variant.sellingPrice) !== sellingPrice;
 
   const update = { id: variant.id, costPrice: product.price };
-  if (sellChanged) update.sellingPrice = sellingPrice;
+  if (sellChanged) {
+    update.sellingPrice = sellingPrice;
+    // Record WHICH rule produced this price, so a later rule change is
+    // recognised as a rule change rather than as a manual override.
+    update.pricingRule = pricingRuleFingerprint(kind);
+  }
   if (product.stock !== null) update.stock = product.stock;
 
   return {
@@ -523,4 +528,131 @@ export async function rebuildCostsFromSnapshot() {
   );
 
   return { updated: result.length };
+}
+
+/**
+ * Re-derive every variant's sellingPrice from its cost under the rule in force.
+ *
+ * WHY THIS EXISTS
+ *
+ * The catalogue sync only reprices a variant when it FETCHES that SKU from the
+ * provider. So after an operator changes PRICING_MARKUP_MULTIPLIER there was no
+ * way to apply it without a full pricelist walk — and with the old pinned check
+ * the walk repriced nothing anyway. This is the operation that makes a pricing
+ * rule change take effect: it needs no provider call, only the cost already
+ * stored on each row.
+ *
+ * SAFETY: an operator override (`pricingRule = MANUAL_RULE`) is never touched.
+ * Everything else is repriced, including rows derived under an older rule —
+ * that is the point.
+ *
+ * @param {{ dryRun?: boolean, kind?: "GAME"|"PULSA"|null, actor?: object, request?: object }} options
+ * @returns {Promise<{ scanned: number, changed: number, skippedManual: number, unchanged: number, samples: object[] }>}
+ */
+export async function repriceCatalogue({ dryRun = false, kind = null, actor = null, request = null } = {}) {
+  const variants = await prisma.productVariant.findMany({
+    where: { isActive: true, costPrice: { gt: 0 } },
+    select: {
+      id: true,
+      name: true,
+      costPrice: true,
+      sellingPrice: true,
+      pricingRule: true,
+      product: { select: { game: { select: { slug: true, category: { select: { kind: true } } } } } },
+    },
+  });
+
+  const samples = [];
+  const updates = [];
+  let skippedManual = 0;
+  let unchanged = 0;
+  // Unchanged rows split by regime, so the dashboard can explain WHY they did
+  // not move. A PULSA row is priced by a fixed rupiah spread and therefore never
+  // responds to PRICING_MARKUP_MULTIPLIER; without this split "unchanged: 35"
+  // reads like the action half-failed.
+  const unchangedPulsa = { count: 0 };
+
+  for (const variant of variants) {
+    // The category decides the regime; an explicit `kind` filters the pass so
+    // an operator can reprice only games or only airtime.
+    const variantKind = variant.product?.game?.category?.kind ?? undefined;
+    if (kind && variantKind !== kind) continue;
+
+    if (isPricePinned(variant, variantKind)) {
+      skippedManual += 1;
+      continue;
+    }
+
+    const next = sellingPriceFromCost(variant.costPrice, { kind: variantKind });
+    if (next === variant.sellingPrice) {
+      unchanged += 1;
+      if (variantKind === "PULSA") unchangedPulsa.count += 1;
+      // The price is right but the recorded rule may be stale (the number
+      // happens to match). Refresh it so the next rule change is recognised.
+      updates.push({
+        id: variant.id,
+        sellingPrice: next,
+        pricingRule: pricingRuleFingerprint(variantKind),
+      });
+      continue;
+    }
+
+    if (samples.length < 20) {
+      samples.push({
+        game: variant.product?.game?.slug ?? null,
+        name: variant.name,
+        from: variant.sellingPrice,
+        to: next,
+      });
+    }
+    updates.push({
+      id: variant.id,
+      sellingPrice: next,
+      pricingRule: pricingRuleFingerprint(variantKind),
+    });
+  }
+
+  const changed = updates.filter((u) => {
+    const original = variants.find((v) => v.id === u.id);
+    return original && original.sellingPrice !== u.sellingPrice;
+  }).length;
+
+  if (!dryRun && updates.length > 0) {
+    // One transaction: a half-repriced catalogue is worse than an old one,
+    // because some customers would pay the new markup and some the old.
+    await prisma.$transaction(
+      updates.map((u) =>
+        prisma.productVariant.update({
+          where: { id: u.id },
+          data: { sellingPrice: u.sellingPrice, pricingRule: u.pricingRule },
+          select: { id: true },
+        })
+      ),
+      { timeout: 60_000, maxWait: 10_000 }
+    );
+
+    await writeSyncAudit({
+      actor,
+      request,
+      report: {
+        fetched: 0,
+        created: 0,
+        priceChanged: changed,
+        unmatched: [],
+        durationMs: 0,
+      },
+    });
+  }
+
+  return {
+    scanned: variants.length,
+    changed,
+    skippedManual,
+    unchanged,
+    // Of `unchanged`, how many are airtime (fixed spread, unaffected by the
+    // multiplier). Surfaced so a "0 changed" result can be read correctly.
+    unchangedPulsa: unchangedPulsa.count,
+    dryRun,
+    samples,
+  };
 }

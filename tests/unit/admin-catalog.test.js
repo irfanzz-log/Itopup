@@ -136,7 +136,11 @@ describe("updateVariantPrice", () => {
 
     expect(prisma.productVariant.update).toHaveBeenCalledWith({
       where: { id: "variant-1" },
-      data: { sellingPrice: 25000 },
+      // `pricingRule: "manual"` is not incidental: it is how the catalogue sync
+      // knows this price was chosen by a human and must not be rederived. The
+      // old payload had no marker, so the sync could only guess — and it
+      // guessed wrong after every markup change.
+      data: { sellingPrice: 25000, pricingRule: "manual" },
       select: { id: true, name: true, costPrice: true, sellingPrice: true },
     });
     expect(result.changed).toBe(true);

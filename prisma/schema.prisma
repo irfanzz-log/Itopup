@@ -160,6 +160,26 @@ model ProductVariant {
   costPrice        Int
   /// Base selling price before promo. What the customer pays by default.
   sellingPrice     Int
+  /// Fingerprint of the pricing RULE that last wrote `sellingPrice`.
+  ///
+  /// WHY THIS EXISTS: the sync used to decide "has an admin overridden this
+  /// price?" by recomputing the derivation from the CURRENT rule and comparing
+  /// it to the stored price. That is not a test for an override, it is a test
+  /// for "the rule has not changed since this row was written" — so the moment
+  /// an operator changes PRICING_MARKUP_MULTIPLIER, EVERY derived row stops
+  /// matching, is misread as a manual override, and the sync silently refuses
+  /// to reprice anything. Changing the markup appeared to do nothing.
+  ///
+  /// Storing the rule that produced the price turns that guess into a fact:
+  ///   * NULL            → written before this column existed; treated as
+  ///                       derived (migrated rows are all rule-derived, see the
+  ///                       migration) so the first sync after the change
+  ///                       reprices them.
+  ///   * equal to now    → still derived, safe to reprice from cost.
+  ///   * different       → an admin set this price by hand, leave it alone.
+  /// It is also what makes a markup change APPLY rather than merely look like
+  /// an override.
+  pricingRule      String?
   /// Optional admin override; null means "derive from costPrice + markup".
   isActive         Boolean           @default(true)
   /// Provider-reported stock; null means unlimited / untracked.
